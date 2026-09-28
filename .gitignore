@@ -1,0 +1,5 @@
+config/local.php
+uploads/techniciens/*
+!uploads/techniciens/.htaccess
+!uploads/techniciens/index.php
+tmp_*.txt

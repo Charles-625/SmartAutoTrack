@@ -1,0 +1,9 @@
+# Aucun accès direct au dossier uploads (fichiers servis via des scripts PHP authentifiés)
+Options -Indexes
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+</IfModule>

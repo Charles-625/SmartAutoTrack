@@ -1,0 +1,101 @@
+<?php
+require_once '../config/config.php';
+require_once '../config/database.php';
+require_once '../config/roles.php';
+require_once 'includes/helpers.php';
+
+requireRole('technicien');
+
+$db = new Database();
+$conn = $db->getConnection();
+$selfId = (int)$_SESSION['user_id'];
+
+$dbNow = $conn->query('SELECT NOW()')->fetchColumn();
+
+// Le technicien ne voit que ses propres activités : ses propres actions, ses
+// propres interventions/réparations affectées, et les anomalies constatées
+// sur une intervention où il est intervenu — jamais le journal d'un autre
+// technicien. Le cloisonnement est appliqué une seule fois, dans
+// activity_log_fetch() (includes/activity_log.php).
+//
+// Traçabilité automatique des actions métier — jamais un rapport rédigé à la
+// main : chaque ligne est générée depuis l'action réellement effectuée
+// (démarrage, clôture, anomalie constatée, réparation enregistrée...) via
+// includes/activity_log.php::log_activity(), et mise en phrase à la 2e
+// personne par tv2_phrase() (technicien/includes/helpers.php).
+$categorieFilter = $_GET['categorie'] ?? '';
+$dateFrom = $_GET['date_from'] ?? '';
+$dateTo = $_GET['date_to'] ?? '';
+
+$journal = activity_log_fetch($conn, 'technicien', $selfId, [], [
+    'categorie' => $categorieFilter ?: null,
+    'date_from' => $dateFrom ?: null,
+    'date_to' => $dateTo ?: null,
+]);
+
+$stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idTechnicien = ? AND statut = 'PLANIFIEE'");
+$stmt->execute([$selfId]);
+$tachesADemarrer = (int)$stmt->fetchColumn();
+
+$icons = [
+    'intervention' => ['bg' => '#E7F3FC', 'color' => '#1E7DBF'],
+    'reparation' => ['bg' => '#E4F7EE', 'color' => '#1E8A5A'],
+    'anomalie' => ['bg' => '#FDEDEE', 'color' => '#E5484D'],
+];
+$categorieLabels = ['intervention' => 'Intervention', 'reparation' => 'Réparation', 'anomalie' => 'Anomalie'];
+
+$pageTitle = "Journal d'activité";
+$hideNavbar = true;
+$bodyClass = 'tv2';
+$extraStylesheets = ['assets/css/technicien_v2.css'];
+$extraFonts = ['https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700&display=swap'];
+include '../includes/header.php';
+?>
+<div class="tv2-shell">
+    <?php $activeNav = 'journal'; $tachesBadge = $tachesADemarrer; include 'includes/sidebar.php'; ?>
+
+    <main class="tv2-main">
+        <div class="tv2-page-head">
+            <div>
+                <h1 class="tv2-h1">Journal d'activité</h1>
+                <p class="tv2-sub">La trace automatique de vos actions — pas un rapport à rédiger, uniquement ce que vous avez réellement fait.</p>
+            </div>
+        </div>
+
+        <form method="GET" class="tv2-filterbar">
+            <select name="categorie" onchange="this.form.submit()">
+                <option value="">Toutes les catégories</option>
+                <?php foreach ($categorieLabels as $key => $label): ?>
+                    <option value="<?php echo h($key); ?>" <?php echo $categorieFilter === $key ? 'selected' : ''; ?>><?php echo h($label); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <input type="date" name="date_from" value="<?php echo h($dateFrom); ?>" onchange="this.form.submit()">
+            <input type="date" name="date_to" value="<?php echo h($dateTo); ?>" onchange="this.form.submit()">
+            <?php if ($categorieFilter || $dateFrom || $dateTo): ?>
+                <a href="journal.php" class="tv2-btn-outline tv2-btn-xs" style="text-decoration:none;">Réinitialiser</a>
+            <?php endif; ?>
+        </form>
+
+        <div class="tv2-card tv2-panel">
+            <?php if (empty($journal)): ?>
+                <div class="tv2-empty">Aucune activité pour le moment. Cet historique se remplit automatiquement dès que vous démarrez une intervention, enregistrez une réparation ou constatez une anomalie.</div>
+            <?php else: ?>
+                <div class="tv2-timeline">
+                    <?php foreach ($journal as $j): $icon = $icons[$j['categorie']] ?? ['bg' => '#F2EEE7', 'color' => '#7A6A57']; ?>
+                        <div class="tv2-timeline-item">
+                            <div class="tv2-timeline-dot" style="background:<?php echo h($icon['bg']); ?>;">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" fill="<?php echo h($icon['color']); ?>"/></svg>
+                            </div>
+                            <div>
+                                <div class="tv2-timeline-title"><?php echo h(tv2_phrase($j, $selfId)); ?></div>
+                                <div class="tv2-timeline-time"><?php echo h(v2_relative($j['dateHeure'], $dbNow)); ?> · <?php echo h(date('d/m/Y H:i', strtotime($j['dateHeure']))); ?></div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+    </main>
+</div>
+
+<?php include '../includes/footer.php'; ?>

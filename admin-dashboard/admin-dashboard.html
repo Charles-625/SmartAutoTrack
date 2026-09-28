@@ -1,0 +1,150 @@
+ <!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartAutoTrack - Admin Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://kit.fontawesome.com/2c36e9b7b1.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <!-- Sidebar -->
+   <aside class="sidebar">
+  <h2 class="logo">SmartAutoTrack</h2>
+  <ul>
+    <li class="active" data-section="dashboard"><i class="fas fa-home"></i> Tableau de Bord</li>
+    <li data-section="intervention"><i class="fas fa-tools"></i> Programmer Intervention</li>
+    <li data-section="profils"><i class="fas fa-users"></i> Gérer Profils</li>
+    <li data-section="utilisateurs"><i class="fas fa-address-book"></i> Utilisateurs</li>
+    <li data-section="planning"><i class="fas fa-calendar-alt"></i> Planning</li>
+    <li data-section="anomalies"><i class="fas fa-exclamation-triangle"></i> Anomalies</li>
+    <li data-section="reparations"><i class="fas fa-wrench"></i> Réparations</li>
+  </ul>
+</aside>
+
+
+  <!-- Contenu principal -->
+  <main class="main-content">
+    <!-- Header -->
+    
+<header>
+  <h1>Bienvenue Administrateur</h1>
+  <div class="profile">
+    <img src="https://i.pravatar.cc/40" alt="Photo Profil" id="profile-img">
+    <span>Mon Profil</span>
+    <div class="dropdown" id="profile-menu">
+      <ul>
+        <li><i class="fas fa-user"></i> Voir Profil</li>
+        <li><i class="fas fa-edit"></i> Modifier Profil</li>
+        <li><i class="fas fa-sign-out-alt"></i> Déconnexion</li>
+      </ul>
+    </div>
+  </div>
+</header>
+
+
+    <!-- Tableau de bord -->
+    <section id="dashboard" class="content-section active">
+      <h2>Tableau de Bord</h2>
+      <div class="cards">
+        <div class="card">
+          <i class="fas fa-car"></i>
+          <h3 class="counter" data-target="120">0</h3>
+          <p>Véhicules suivis</p>
+        </div>
+        <div class="card">
+          <i class="fas fa-users"></i>
+          <h3 class="counter" data-target="80">0</h3>
+          <p>Clients enregistrés</p>
+        </div>
+        <div class="card">
+          <i class="fas fa-exclamation-circle"></i>
+          <h3 class="counter" data-target="25">0</h3>
+          <p>Anomalies détectées</p>
+        </div>
+        <div class="card">
+          <i class="fas fa-calendar-check"></i>
+          <h3 class="counter" data-target="18">0</h3>
+          <p>Interventions programmées</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Programmer Intervention -->
+    <section id="intervention" class="content-section">
+      <h2>Programmer une Intervention</h2>
+      <form>
+        <label>Véhicule :</label>
+        <input type="text" placeholder="ID ou Immatriculation">
+
+        <label>Technicien :</label>
+        <input type="text" placeholder="Nom du technicien">
+
+        <label>Date :</label>
+        <input type="date">
+
+        <label>Description :</label>
+        <textarea placeholder="Description de l’intervention"></textarea>
+
+        <button type="submit">Enregistrer</button>
+      </form>
+    </section>
+
+    <!-- Gérer Profils -->
+    <section id="profils" class="content-section">
+      <h2>Gérer Profils</h2>
+      <table>
+        <thead>
+          <tr><th>Nom</th><th>Rôle</th><th>Véhicule</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Jean Dupont</td><td>Client</td><td>Toyota Corolla</td><td><button>Modifier</button><button>Supprimer</button></td></tr>
+          <tr><td>Paul Martin</td><td>Technicien</td><td>-</td><td><button>Modifier</button><button>Supprimer</button></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Vue d'ensemble des Utilisateurs -->
+    <section id="utilisateurs" class="content-section">
+      <h2>Vue d’ensemble des Utilisateurs</h2>
+      <table>
+        <thead>
+          <tr><th>Nom</th><th>Statut</th><th>Véhicule associé</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Jean Dupont</td><td>Client</td><td>Toyota Corolla</td></tr>
+          <tr><td>Sophie Lambert</td><td>Client</td><td>Peugeot 208</td></tr>
+          <tr><td>Paul Martin</td><td>Technicien</td><td>-</td></tr>
+          <tr><td>Alain Dubois</td><td>Technicien</td><td>-</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Planning -->
+    <section id="planning" class="content-section">
+      <h2>Planning des Interventions</h2>
+      <div id="calendar"></div>
+    </section>
+
+    <!-- Historique Anomalies -->
+    <section id="anomalies" class="content-section">
+      <h2>Historique des Anomalies</h2>
+      <ul>
+        <li>12/03/2025 - Toyota Corolla - Batterie faible</li>
+        <li>18/03/2025 - Peugeot 208 - Pneu avant usé</li>
+      </ul>
+    </section>
+
+    <!-- Historique Réparations -->
+    <section id="reparations" class="content-section">
+      <h2>Historique des Réparations</h2>
+      <ul>
+        <li>15/03/2025 - Toyota Corolla - Batterie remplacée (Technicien : Paul)</li>
+        <li>20/03/2025 - Peugeot 208 - Pneus changés (Technicien : Alain)</li>
+      </ul>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

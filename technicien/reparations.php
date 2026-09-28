@@ -1,0 +1,216 @@
+<?php
+require_once '../config/config.php';
+require_once '../config/database.php';
+require_once '../config/roles.php';
+require_once 'includes/helpers.php';
+
+requireRole('technicien');
+
+$db = new Database();
+$conn = $db->getConnection();
+$selfId = (int)$_SESSION['user_id'];
+
+$formErrors = [];
+$action = $_GET['action'] ?? '';
+$preselectIntervention = filter_var($_GET['intervention_id'] ?? null, FILTER_VALIDATE_INT);
+
+// ============================================================
+// Enregistrer une réparation (clôture l'intervention en cours). Il ne s'agit
+// PAS d'un rapport rédigé librement : un formulaire structuré qui alimente
+// directement la fiche réparation vue par le garage et le client, et
+// journalise automatiquement l'action (jamais un document à télécharger).
+// ============================================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'new_reparation') {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $formErrors[] = 'Session expirée, merci de réessayer.';
+    } else {
+        $interventionId = filter_var($_POST['intervention_id'] ?? null, FILTER_VALIDATE_INT);
+        $titre = sanitize($_POST['titre'] ?? '');
+        $description = sanitize($_POST['description'] ?? '');
+        $diagnostic = sanitize($_POST['diagnostic'] ?? '');
+        $travaux = sanitize($_POST['travaux_effectues'] ?? '');
+        $pieces = sanitize($_POST['pieces_utilisees'] ?? '');
+        $duree = (float)($_POST['duree_intervention'] ?? 0);
+        $cout = (float)($_POST['cout'] ?? 0);
+        $recommandations = sanitize($_POST['recommandations'] ?? '');
+
+        if (!$interventionId) $formErrors[] = 'Intervention requise.';
+        if (empty($titre)) $formErrors[] = 'Titre requis.';
+        if (empty($description)) $formErrors[] = 'Description requise.';
+        if (empty($diagnostic)) $formErrors[] = 'Diagnostic requis.';
+        if (empty($travaux)) $formErrors[] = 'Travaux effectués requis.';
+        if ($duree <= 0) $formErrors[] = 'Durée d\'intervention requise.';
+        if ($cout < 0) $formErrors[] = 'Coût invalide.';
+
+        if (empty($formErrors)) {
+            $stmt = $conn->prepare("SELECT idClient FROM intervention WHERE idIntervention = ? AND idTechnicien = ? AND statut = 'EN_COURS'");
+            $stmt->execute([$interventionId, $selfId]);
+            $iv = $stmt->fetch();
+            if (!$iv) {
+                $formErrors[] = 'Cette intervention n\'est pas (ou plus) en cours pour vous.';
+            } else {
+                $conn->beginTransaction();
+                $stmt = $conn->prepare("
+                    INSERT INTO reparation (idIntervention, idTechnicien, titre, description, diagnostic, travauxEffectues, piecesUtilisees, dureeIntervention, cout, recommandations, statut)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'TERMINEE')
+                ");
+                $stmt->execute([$interventionId, $selfId, $titre, $description, $diagnostic, $travaux, $pieces, $duree, $cout, $recommandations]);
+                $reparationId = (int)$conn->lastInsertId();
+
+                $conn->prepare("UPDATE intervention SET statut = 'TERMINEE' WHERE idIntervention = ? AND idTechnicien = ?")->execute([$interventionId, $selfId]);
+
+                technicien_log($conn, 'Réparation renseignée et intervention clôturée', [
+                    'idIntervention' => $interventionId, 'idReparation' => $reparationId, 'description' => $titre, 'categorie' => 'reparation',
+                ]);
+
+                $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'rapport', 'Rapport de réparation disponible', ?)")
+                    ->execute([$iv['idClient'], 'Le rapport de réparation pour votre véhicule est disponible.']);
+
+                $conn->commit();
+                header('Location: reparations.php?success=created');
+                exit;
+            }
+        }
+    }
+}
+
+// Interventions EN_COURS de ce technicien, disponibles pour enregistrer une réparation
+$stmt = $conn->prepare("
+    SELECT i.idIntervention AS id, i.type, v.marque, v.modele, v.immatriculation, u.nom AS client_nom, u.prenom AS client_prenom
+    FROM intervention i
+    JOIN vehicule v ON i.idVehicule = v.idVehicule
+    JOIN utilisateur u ON i.idClient = u.idUtilisateur
+    WHERE i.idTechnicien = ? AND i.statut = 'EN_COURS'
+    ORDER BY i.dateIntervention ASC
+");
+$stmt->execute([$selfId]);
+$interventionsDisponibles = $stmt->fetchAll();
+
+// Réparations déjà enregistrées par ce technicien
+$stmt = $conn->prepare("
+    SELECT r.idReparation AS id, r.titre, r.statut, r.cout, r.dateReparation, r.dureeIntervention,
+           v.marque, v.modele, v.immatriculation,
+           uc.nom AS client_nom, uc.prenom AS client_prenom
+    FROM reparation r
+    JOIN intervention i ON r.idIntervention = i.idIntervention
+    JOIN vehicule v ON i.idVehicule = v.idVehicule
+    JOIN utilisateur uc ON i.idClient = uc.idUtilisateur
+    WHERE r.idTechnicien = ?
+    ORDER BY r.dateReparation DESC
+");
+$stmt->execute([$selfId]);
+$reparations = $stmt->fetchAll();
+
+$stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idTechnicien = ? AND statut = 'PLANIFIEE'");
+$stmt->execute([$selfId]);
+$tachesADemarrer = (int)$stmt->fetchColumn();
+
+$pageTitle = 'Mes réparations';
+$hideNavbar = true;
+$bodyClass = 'tv2';
+$extraStylesheets = ['assets/css/technicien_v2.css'];
+$extraFonts = ['https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700&display=swap'];
+include '../includes/header.php';
+?>
+<div class="tv2-shell">
+    <?php $activeNav = 'reparations'; $tachesBadge = $tachesADemarrer; include 'includes/sidebar.php'; ?>
+
+    <main class="tv2-main">
+
+        <?php if (isset($_GET['success'])): ?>
+            <div class="tv2-alert success">Réparation enregistrée et intervention clôturée.</div>
+        <?php endif; ?>
+        <?php foreach ($formErrors as $err): ?>
+            <div class="tv2-alert error"><?php echo h($err); ?></div>
+        <?php endforeach; ?>
+
+        <div class="tv2-page-head">
+            <div>
+                <h1 class="tv2-h1">Mes réparations</h1>
+                <p class="tv2-sub">Enregistrez une réparation dès qu'une intervention est terminée — elle est automatiquement journalisée et transmise au garage et au client.</p>
+            </div>
+            <?php if (!empty($interventionsDisponibles)): ?>
+                <button type="button" class="tv2-btn-primary" id="openReparationModal">+ Enregistrer une réparation</button>
+            <?php endif; ?>
+        </div>
+
+        <?php if (empty($reparations)): ?>
+            <div class="tv2-card" style="padding:24px;"><div class="tv2-empty">Aucune réparation enregistrée pour le moment.</div></div>
+        <?php else: ?>
+            <div class="tv2-card" style="padding:8px;">
+                <div class="tv2-table-wrap">
+                    <table class="tv2-table">
+                        <thead>
+                            <tr><th>Véhicule</th><th>Client</th><th>Titre</th><th>Date</th><th>Durée</th><th>Coût</th><th>Statut</th></tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($reparations as $r): ?>
+                                <tr>
+                                    <td><?php echo h($r['marque'] . ' ' . $r['modele']); ?><div style="font-size:11.5px; color:#A5977F;"><?php echo h($r['immatriculation']); ?></div></td>
+                                    <td><?php echo h($r['client_prenom'] . ' ' . $r['client_nom']); ?></td>
+                                    <td><?php echo h($r['titre'] ?: '—'); ?></td>
+                                    <td><?php echo h(date('d/m/Y', strtotime($r['dateReparation']))); ?></td>
+                                    <td><?php echo h($r['dureeIntervention']); ?> h</td>
+                                    <td><?php echo number_format((float)$r['cout'], 0, ',', ' '); ?> XAF</td>
+                                    <td><span class="tv2-badge <?php echo $r['statut'] === 'TERMINEE' ? 'ok' : 'warn'; ?>"><?php echo h(ucfirst(strtolower($r['statut']))); ?></span></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        <?php endif; ?>
+    </main>
+</div>
+
+<?php if (!empty($interventionsDisponibles)): ?>
+<div class="tv2-modal-overlay" id="reparationModalOverlay">
+    <div class="tv2-modal">
+        <h3>Enregistrer une réparation</h3>
+        <p class="tv2-modal-sub">Cette action clôture l'intervention et rend la réparation visible au garage et au client.</p>
+        <form method="POST">
+            <input type="hidden" name="form" value="new_reparation">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+            <div class="tv2-form-group">
+                <label for="repIntervention">Intervention</label>
+                <select name="intervention_id" id="repIntervention" required>
+                    <option value="">Sélectionner une intervention en cours</option>
+                    <?php foreach ($interventionsDisponibles as $iv): ?>
+                        <option value="<?php echo (int)$iv['id']; ?>" <?php echo $preselectIntervention === (int)$iv['id'] ? 'selected' : ''; ?>>
+                            <?php echo h(($iv['type'] ?: 'Intervention') . ' — ' . $iv['marque'] . ' ' . $iv['modele'] . ' (' . $iv['immatriculation'] . ') — ' . $iv['client_prenom'] . ' ' . $iv['client_nom']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="tv2-form-group"><label for="repTitre">Titre</label><input type="text" name="titre" id="repTitre" required placeholder="Ex. : Remplacement plaquettes de frein"></div>
+            <div class="tv2-form-group"><label for="repDescription">Description générale</label><textarea name="description" id="repDescription" required></textarea></div>
+            <div class="tv2-form-group"><label for="repDiagnostic">Diagnostic</label><textarea name="diagnostic" id="repDiagnostic" required></textarea></div>
+            <div class="tv2-form-group"><label for="repTravaux">Travaux effectués</label><textarea name="travaux_effectues" id="repTravaux" required></textarea></div>
+            <div class="tv2-form-group"><label for="repPieces">Pièces utilisées</label><textarea name="pieces_utilisees" id="repPieces"></textarea></div>
+            <div class="tv2-form-row">
+                <div class="tv2-form-group"><label for="repDuree">Durée (heures)</label><input type="number" name="duree_intervention" id="repDuree" required min="0" step="0.5"></div>
+                <div class="tv2-form-group"><label for="repCout">Coût (XAF)</label><input type="number" name="cout" id="repCout" required min="0" step="1"></div>
+            </div>
+            <div class="tv2-form-group"><label for="repRecommandations">Recommandations</label><textarea name="recommandations" id="repRecommandations"></textarea></div>
+            <div class="tv2-modal-actions">
+                <button type="button" class="tv2-btn-outline" id="closeReparationModal">Annuler</button>
+                <button type="submit" class="tv2-btn-primary">Enregistrer et clôturer</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var overlay = document.getElementById('reparationModalOverlay');
+    var openBtn = document.getElementById('openReparationModal');
+    if (openBtn) openBtn.addEventListener('click', function () { overlay.classList.add('show'); });
+    document.getElementById('closeReparationModal').addEventListener('click', function () { overlay.classList.remove('show'); });
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.classList.remove('show'); });
+    <?php if ($action === 'new' || !empty($formErrors)): ?>
+    overlay.classList.add('show');
+    <?php endif; ?>
+});
+</script>
+<?php endif; ?>
+
+<?php include '../includes/footer.php'; ?>
