@@ -3,3 +3,37 @@ uploads/techniciens/*
 !uploads/techniciens/.htaccess
 !uploads/techniciens/index.php
 tmp_*.txt
+
+# Dependencies
+/vendor/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Node
+node_modules/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs, caches, build
+*.log
+logs/
+cache/
+tmp/
+phpunit_result.cache
+.phpunit.result.cache
+build/
+dist/
+
+# Composer
+composer.phar
