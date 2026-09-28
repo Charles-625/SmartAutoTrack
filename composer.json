@@ -1,0 +1,21 @@
+{
+	"name": "hch/smartautotrack",
+	"description": "Suite de tests (unitaires, intégration, fonctionnels) pour SmartAutoTrack",
+	"type": "project",
+	"require": {},
+	"require-dev": {
+		"phpunit/phpunit": "^9.6",
+		"guzzlehttp/guzzle": "^7.9"
+	},
+	"autoload": {
+		"psr-4": {
+			"HCH\\": ""
+		}
+	},
+	"scripts": {
+		"test": "phpunit -c phpunit.xml",
+		"test:unit": "phpunit -c phpunit.xml --testsuite Unit",
+		"test:integration": "phpunit -c phpunit.xml --testsuite Integration",
+		"test:functional": "phpunit -c phpunit.xml --testsuite Functional"
+	}
+}

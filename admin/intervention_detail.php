@@ -1,0 +1,223 @@
+<?php
+require_once '../config/config.php';
+require_once '../config/database.php';
+require_once '../config/roles.php';
+require_once 'includes/helpers.php';
+
+requireRole('admin');
+
+$db = new Database();
+$conn = $db->getConnection();
+
+$interventionId = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT);
+if (!$interventionId) { header('Location: interventions.php'); exit; }
+
+$errors = [];
+
+// Réaffectation du garage — même règle métier que la liste (admin_reassign_garage,
+// admin/includes/helpers.php), mais avec son propre traitement ici pour
+// pouvoir réafficher une erreur sur CETTE page (jamais de redirection qui
+// perdrait le message).
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reassign_garage') {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $errors[] = 'Session expirée, merci de réessayer.';
+    } else {
+        $newGarageId = filter_var($_POST['garage_id'] ?? null, FILTER_VALIDATE_INT);
+        if (!$newGarageId) {
+            $errors[] = 'Merci de choisir un garage.';
+        } else {
+            $reassignError = admin_reassign_garage($conn, $interventionId, $newGarageId);
+            if ($reassignError !== null) {
+                $errors[] = $reassignError;
+            } else {
+                header("Location: intervention_detail.php?id=$interventionId&success=garage_assigned");
+                exit;
+            }
+        }
+    }
+}
+
+$stmt = $conn->prepare("
+    SELECT i.idIntervention AS id, i.type, i.description, i.dateIntervention, i.statut, i.priorite,
+           i.idGarage, i.idTechnicien,
+           v.idVehicule, v.marque, v.modele, v.immatriculation,
+           uc.idUtilisateur AS client_id, uc.nom AS client_nom, uc.prenom AS client_prenom, uc.email AS client_email,
+           g.nomGarage, g.statutGarage,
+           ut.nom AS technicien_nom, ut.prenom AS technicien_prenom
+    FROM intervention i
+    JOIN vehicule v ON v.idVehicule = i.idVehicule
+    JOIN utilisateur uc ON uc.idUtilisateur = i.idClient
+    LEFT JOIN garage g ON g.idGarage = i.idGarage
+    LEFT JOIN utilisateur ut ON ut.idUtilisateur = i.idTechnicien
+    WHERE i.idIntervention = ?
+");
+$stmt->execute([$interventionId]);
+$iv = $stmt->fetch();
+if (!$iv) { header('Location: interventions.php'); exit; }
+
+// Historique complet de cette intervention (toutes catégories) — c'est ici
+// qu'on retrouve, sans nouvelle colonne ni nouvelle table, le garage choisi
+// par le client, la recommandation SmartAutoTrack le cas échéant, et chaque
+// réaffectation admin : le journal d'activité suffit (cf. section 10 du cadrage).
+$journal = activity_log_fetch($conn, 'admin', (int)$_SESSION['user_id'], [], ['idIntervention' => $interventionId, 'limit' => 50]);
+
+$clientChoiceEntry = null;
+$recommendationEntry = null;
+foreach ($journal as $j) {
+    if ($clientChoiceEntry === null && $j['nomActivite'] === 'Client a sélectionné un garage pour sa demande') {
+        $clientChoiceEntry = $j;
+    }
+    if ($recommendationEntry === null && $j['nomActivite'] === 'SmartAutoTrack a recommandé un garage pour cette demande') {
+        $recommendationEntry = $j;
+    }
+}
+
+$canReassign = in_array($iv['statut'], ['PLANIFIEE', 'ANNULEE'], true);
+$otherGarages = $conn->prepare("SELECT idGarage, nomGarage FROM garage WHERE statutGarage = 'VALIDE' AND idGarage != ? ORDER BY nomGarage");
+$otherGarages->execute([(int)($iv['idGarage'] ?? 0)]);
+$otherGarages = $otherGarages->fetchAll();
+
+$statutLabels = ['PLANIFIEE' => 'Planifiée', 'EN_COURS' => 'En cours', 'TERMINEE' => 'Terminée', 'ANNULEE' => 'Annulée'];
+$statutBadge = ['PLANIFIEE' => 'info', 'EN_COURS' => 'warn', 'TERMINEE' => 'ok', 'ANNULEE' => 'bad'];
+
+$pageTitle = 'Intervention #' . $iv['id'];
+$hideNavbar = true;
+$bodyClass = 'av2';
+$extraStylesheets = ['assets/css/admin_v2.css'];
+$extraFonts = ['https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700&display=swap'];
+include '../includes/header.php';
+?>
+<div class="av2-shell">
+    <?php $activeNav = 'interventions'; include 'includes/sidebar.php'; ?>
+
+    <main class="av2-main">
+        <?php if (isset($_GET['success'])): ?>
+            <div class="av2-alert success">Garage affecté avec succès.</div>
+        <?php endif; ?>
+        <?php foreach ($errors as $err): ?><div class="av2-alert error"><?php echo h($err); ?></div><?php endforeach; ?>
+
+        <div class="av2-page-head">
+            <div>
+                <div class="av2-kicker">Intervention #<?php echo (int)$iv['id']; ?></div>
+                <h1 class="av2-h1"><?php echo h($iv['type'] ?: 'Intervention'); ?></h1>
+                <p class="av2-sub"><?php echo h($iv['marque'] . ' ' . $iv['modele'] . ' · ' . $iv['immatriculation']); ?></p>
+            </div>
+            <a href="interventions.php" class="av2-btn-outline" style="text-decoration:none;">← Retour aux interventions</a>
+        </div>
+
+        <div class="av2-stats av2-stats-3">
+            <div class="av2-card av2-stat-card">
+                <div class="av2-stat-icon" style="background:#EFF0F6;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#6D74A0" stroke-width="1.8"/></svg></div>
+                <div><div class="av2-stat-value" style="font-size:17px;"><?php echo h($statutLabels[$iv['statut']] ?? $iv['statut']); ?></div><div class="av2-stat-label">Statut</div></div>
+            </div>
+            <div class="av2-card av2-stat-card">
+                <div class="av2-stat-icon" style="background:#FFF4E2;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3L22 20H2L12 3Z" stroke="#C8871A" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
+                <div><div class="av2-stat-value" style="font-size:17px;"><?php echo h(ucfirst(strtolower($iv['priorite']))); ?></div><div class="av2-stat-label">Priorité</div></div>
+            </div>
+            <div class="av2-card av2-stat-card">
+                <div class="av2-stat-icon" style="background:#E7F3FC;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#1E7DBF" stroke-width="1.8"/></svg></div>
+                <div><div class="av2-stat-value" style="font-size:15px;"><?php echo h(date('d/m/Y', strtotime($iv['dateIntervention']))); ?></div><div class="av2-stat-label">Date</div></div>
+            </div>
+        </div>
+
+        <div class="av2-body">
+            <div class="av2-col">
+                <div class="av2-card av2-panel">
+                    <div class="av2-panel-head"><h2>Client &amp; véhicule</h2></div>
+                    <div style="display:flex; flex-direction:column; gap:8px; font-size:13.5px;">
+                        <div><strong>Client</strong><br><?php echo h($iv['client_prenom'] . ' ' . $iv['client_nom']); ?> — <?php echo h($iv['client_email']); ?></div>
+                        <div><strong>Véhicule</strong><br><?php echo h($iv['marque'] . ' ' . $iv['modele'] . ' (' . $iv['immatriculation'] . ')'); ?></div>
+                        <?php if ($iv['description']): ?><div><strong>Description du client</strong><br><?php echo h($iv['description']); ?></div><?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="av2-card av2-panel">
+                    <div class="av2-panel-head"><h2>Historique de l'affectation</h2></div>
+                    <?php if (empty($journal)): ?>
+                        <div class="av2-empty">Aucun événement enregistré.</div>
+                    <?php else: ?>
+                        <div class="av2-timeline">
+                            <?php foreach ($journal as $j): ?>
+                                <div class="av2-timeline-item">
+                                    <div class="av2-timeline-dot"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" fill="#3956E8"/></svg></div>
+                                    <div>
+                                        <div class="av2-timeline-title"><?php echo h($j['nomActivite']); ?></div>
+                                        <?php if ($j['description']): ?><div class="av2-row-meta"><?php echo h($j['description']); ?></div><?php endif; ?>
+                                        <div class="av2-timeline-time"><?php echo h(date('d/m/Y H:i', strtotime($j['dateHeure']))); ?> · <?php echo h(activity_log_role_label($j['acteur_role'])); ?></div>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="av2-col">
+                <div class="av2-card av2-panel-sm">
+                    <div class="av2-panel-head"><h2>Garage</h2></div>
+                    <div style="display:flex; flex-direction:column; gap:10px; font-size:13.5px; margin-bottom:16px;">
+                        <div>
+                            <strong>Actuellement affecté</strong><br>
+                            <?php if ($iv['nomGarage']): ?>
+                                <?php echo h($iv['nomGarage']); ?> <span class="av2-badge <?php echo h(av2_status_badge($iv['statutGarage'])); ?>"><?php echo h(av2_status_label($iv['statutGarage'])); ?></span>
+                            <?php else: ?>
+                                <span class="av2-badge warn">Aucun</span>
+                            <?php endif; ?>
+                        </div>
+                        <div>
+                            <strong>Choisi par le client</strong><br>
+                            <?php if ($clientChoiceEntry): ?>
+                                <?php echo h($clientChoiceEntry['description']); ?>
+                            <?php else: ?>
+                                <span style="color:#8B90B3;">Non renseigné (demande créée avant cette fonctionnalité, ou affectée directement par un administrateur).</span>
+                            <?php endif; ?>
+                        </div>
+                        <div>
+                            <strong>Recommandé par SmartAutoTrack</strong><br>
+                            <?php if ($recommendationEntry): ?>
+                                <?php echo h($recommendationEntry['description']); ?>
+                            <?php else: ?>
+                                <span style="color:#8B90B3;">Aucune recommandation enregistrée pour cette demande.</span>
+                            <?php endif; ?>
+                        </div>
+                        <?php if ($iv['technicien_nom']): ?>
+                            <div><strong>Technicien affecté</strong><br><?php echo h($iv['technicien_prenom'] . ' ' . $iv['technicien_nom']); ?></div>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if ($canReassign): ?>
+                        <?php if (empty($otherGarages)): ?>
+                            <div class="av2-empty">Aucun garage validé disponible pour l'affectation.</div>
+                        <?php else: ?>
+                            <?php
+                            $reassignFieldLabel = $iv['idGarage'] ? 'Réaffecter à' : 'Affecter à';
+                            $reassignButtonLabel = $iv['idGarage'] ? 'Réaffecter le garage' : 'Affecter le garage';
+                            $reassignConfirm = $iv['idGarage']
+                                ? 'Réaffecter cette intervention à un autre garage ? Un technicien déjà affecté sera réinitialisé, le client et le nouveau garage seront notifiés.'
+                                : 'Affecter cette intervention à ce garage ? Le client et le garage seront notifiés.';
+                            ?>
+                            <form method="POST" action="intervention_detail.php?id=<?php echo (int)$iv['id']; ?>">
+                                <input type="hidden" name="action" value="reassign_garage">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+                                <div class="av2-form-group">
+                                    <label><?php echo h($reassignFieldLabel); ?></label>
+                                    <select name="garage_id" required>
+                                        <option value="">Sélectionner un garage</option>
+                                        <?php foreach ($otherGarages as $g): ?>
+                                            <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <button type="submit" class="av2-btn-primary btn-confirm" data-confirm="<?php echo h($reassignConfirm); ?>" style="width:100%;"><?php echo h($reassignButtonLabel); ?></button>
+                            </form>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <div class="av2-empty">Cette intervention est <?php echo h(strtolower($statutLabels[$iv['statut']] ?? $iv['statut'])); ?> : elle ne peut plus être réaffectée.</div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<?php include '../includes/footer.php'; ?>

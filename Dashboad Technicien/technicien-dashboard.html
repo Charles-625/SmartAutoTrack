@@ -1,0 +1,134 @@
+ <!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Technicien - SmartAutoTrack</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <h2>Technicien</h2>
+    <nav>
+      <ul>
+        <li><a href="#" data-section="taches"><i class="fas fa-tasks"></i> Tâches assignées</a></li>
+        <li><a href="#" data-section="anomalies"><i class="fas fa-exclamation-triangle"></i> Historique anomalies</a></li>
+        <li><a href="#" data-section="reparations"><i class="fas fa-tools"></i> Historique réparations</a></li>
+        <li><a href="#" data-section="programme"><i class="fas fa-plus-circle"></i> Programme intervention</a></li>
+      </ul>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <main>
+    <!-- Header -->
+    <header>
+      <h1>Tableau de bord technicien</h1>
+      <div class="profile-menu">
+        <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="Profil" class="profile-pic">
+        <div class="dropdown">
+          <button id="profileBtn">Mon Profil <i class="fas fa-caret-down"></i></button>
+          <div class="dropdown-content">
+            <a href="#"><i class="fas fa-user"></i> Voir profil</a>
+            <a href="#"><i class="fas fa-edit"></i> Modifier profil</a>
+            <a href="#"><i class="fas fa-sign-out-alt"></i> Déconnexion</a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- KPI -->
+    <section class="kpi">
+      <div class="card"><h3 id="tasks-pending">0</h3><p>Tâches en attente</p></div>
+      <div class="card"><h3 id="tasks-progress">0</h3><p>Tâches en cours</p></div>
+      <div class="card"><h3 id="tasks-done">0</h3><p>Tâches terminées</p></div>
+      <div class="card"><h3 id="programmes">0</h3><p>Programmes créés</p></div>
+    </section>
+
+    <!-- Sections -->
+    <section id="taches" class="content-section active">
+      <h2>Tâches assignées</h2>
+      <table>
+        <thead>
+          <tr><th>Véhicule</th><th>Panne</th><th>Date</th><th>Statut</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Toyota Corolla</td>
+            <td>Batterie faible</td>
+            <td>12/09/2025</td>
+            <td>
+              <select class="statut-select">
+                <option value="en-attente" selected>En attente</option>
+                <option value="en-cours">En cours</option>
+                <option value="termine">Terminé</option>
+              </select>
+            </td>
+            <td><button class="rapport-btn">Rédiger rapport</button></td>
+          </tr>
+          <tr>
+            <td>Peugeot 208</td>
+            <td>Pneu usé</td>
+            <td>10/09/2025</td>
+            <td>
+              <select class="statut-select">
+                <option value="en-attente">En attente</option>
+                <option value="en-cours" selected>En cours</option>
+                <option value="termine">Terminé</option>
+              </select>
+            </td>
+            <td><button class="rapport-btn">Rédiger rapport</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="anomalies" class="content-section">
+      <h2>Historique anomalies</h2>
+      <ul>
+        <li>[12/09/2025] Toyota Corolla - Batterie faible</li>
+        <li>[10/09/2025] Peugeot 208 - Pneu usé</li>
+      </ul>
+    </section>
+
+    <section id="reparations" class="content-section">
+      <h2>Historique réparations</h2>
+      <table>
+        <thead>
+          <tr><th>Véhicule</th><th>Date</th><th>Technicien</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Toyota Corolla</td>
+            <td>13/09/2025</td>
+            <td>M. Paul</td>
+            <td><button class="voir-rapport">Voir rapport</button></td>
+          </tr>
+          <tr>
+            <td>Peugeot 208</td>
+            <td>11/09/2025</td>
+            <td>M. Jean</td>
+            <td><button class="voir-rapport">Voir rapport</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="programme" class="content-section">
+      <h2>Ajouter un programme d’intervention</h2>
+      <form id="programme-form">
+        <label>Description :</label>
+        <input type="text" placeholder="Ex: Vidange dans 6 mois" required>
+        <label>Date prévue :</label>
+        <input type="date" required>
+        <button type="submit">Ajouter</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="tests/bootstrap.php" colors="true" cacheResultFile="tests/.phpunit.cache">
+	<testsuites>
+		<testsuite name="Unit">
+			<directory>tests/Unit</directory>
+		</testsuite>
+		<testsuite name="Integration">
+			<directory>tests/Integration</directory>
+		</testsuite>
+		<testsuite name="Functional">
+			<directory>tests/Functional</directory>
+		</testsuite>
+	</testsuites>
+	<php>
+		<const name="HCH_BASE_URL" value="http://localhost/HCH/"/>
+	</php>
+</phpunit>
+
