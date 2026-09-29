@@ -59,98 +59,66 @@ Définissez un mot de passe fort avant de vous connecter :
   - GET  /api/reparations
   - POST /api/reparations (admin|technicien)
   - DELETE /api/reparations/{id} (admin)
-
-- Interventions
-  - GET  /api/interventions
-  - POST /api/interventions (admin)
-  - DELETE /api/interventions/{id} (admin)
-
-- Simulateur OBD-II
-  - POST /api/obd/sim { vehicle_id, metrics?: { battery, brakes, engine_temp } }
-
-7) Intégration Front déjà en place
-  - Appelle /api/auth/login et /api/auth/register
-- admin-dashboard/script.js:
-  - Charge les anomalies via /api/anomalies et les affiche
-  - Charge les réparations et anomalies via l’API
-  - Envoi d’un rapport crée une entrée /api/reparations (vehicle_id exemple 1 à adapter)
-- dashbord client/client-script.js:
-  - Charge l’historique réparations via /api/reparations
-
-8) Test rapide
-1. Importez la DB (sql/init.sql)
-2. Ouvrez accueil/login.html dans le navigateur
-3. Définissez le mot de passe admin (voir section 3) puis connectez-vous avec admin@sat.local
-4. Accédez au dashboard admin et vérifiez les anomalies
-5. Simulez une anomalie:
-   curl -X POST http://localhost/smartautotrack/api/obd/sim \
-     -H "Content-Type: application/json" \
-9) Notifications Push (Firebase)
-- Côté front, enregistrez un token FCM du navigateur/mobile puis appelez:
-  POST /api/push/register { token }
-- À chaque POST /api/anomalies (ou /api/obd/sim), une notif est envoyée à:
-  - le client propriétaire du véhicule
-- Activer HTTPS et CORS restrictif
-- Gérer les rôles côté front (masquage UI) et côté back (déjà filtré)
-11) Adaptations à faire (selon besoin)
-base, pas par un script de création.
-- Comptes de test : verrouillés par défaut. Définir un mot de passe :
-  php scripts/set_password.php <email>          (ou --lock pour reverrouiller)
-- Réimporter les données historiques d'un export de l'ancien schéma :
-  php scripts/migrate_legacy_data.php            (simulation) puis --apply
-- OBSOLÈTES (visaient l'ancien schéma users/vehicles, avant le 23/09/2026), à ne
-  plus exécuter : db_init.sql, sql/init.sql, sql/schema.sql, sql/seed_demo.sql,
-  update_database.sql, update_reparations_table.sql, fix_database_simple.sql,
-  scripts/migrate_schema.php.
-=======
 # SmartAutoTrack
 
-Application web PHP de suivi automobile : véhicules, anomalies, interventions,
-réparations et messagerie, avec quatre espaces selon le rôle de l'utilisateur :
-`admin/`, `client/`, `garage/` et `technicien/`.
+Application web PHP de suivi automobile (gestion des véhicules, anomalies, interventions, réparations et messagerie). Ce dépôt contient le backend PHP et les interfaces front pour les administrateurs, clients, garages et techniciens.
+
+## Contenu principal
+- `api/` : services backend
+- `admin/`, `client/`, `garage/`, `technicien/` : interfaces utilisateurs
+- `sql/` : schémas et scripts SQL
+- `assets/` : CSS / JS / images
 
 ## Prérequis
+- PHP >= 7.4 avec `pdo_mysql`, `fileinfo` et `curl`
+- MySQL / MariaDB
+- XAMPP (facultatif, pratique sous Windows)
+- Composer (pour les dépendances et tests)
 
-- XAMPP (Apache + MySQL/MariaDB), PHP >= 7.4 avec les extensions `pdo_mysql`, `fileinfo`
-  et `curl` (paiement CamPay et assistant IA)
-- Composer (uniquement pour lancer les tests)
+## Installation rapide (local / XAMPP)
+1. Copier le dossier du projet dans `C:\xampp\htdocs\HCH`.
+2. Démarrer Apache et MySQL dans XAMPP.
+3. Importer le schéma (exemple) via phpMyAdmin : `sql/SCHEMA_ACTUEL.md` ou le script fourni.
+4. Copier `config/local.example.php` vers `config/local.php` et renseigner les paramètres de connexion (ou définir les variables d'environnement : `HCH_DB_HOST`, `HCH_DB_NAME`, `HCH_DB_USER`, `HCH_DB_PASS`).
+5. Ouvrir l'application : `http://localhost/HCH/`.
 
-## Installation (XAMPP)
+## Configuration
+- Les paramètres d'environnement peuvent être définis via Apache (`SetEnv`) ou dans `config/local.php` (ne pas versionner ce fichier).
+- Variables utiles : `HCH_DEBUG`, `SAT_FCM_SERVER_KEY`, `CAMPAY_*`.
 
-1. Copier le projet dans `C:\xampp\htdocs\HCH` (le chemin de base est détecté automatiquement).
-2. Base de données : le schéma de la base `Charles` est décrit dans `sql/SCHEMA_ACTUEL.md`.
-   Sur une base existante, compléter la structure avec :
-   ```
-   php scripts/migrate_structure.php            (simulation)
-   php scripts/migrate_structure.php --apply    (applique)
-   ```
-3. Identifiants de connexion : variables d'environnement `HCH_DB_HOST`, `HCH_DB_NAME`,
-   `HCH_DB_USER`, `HCH_DB_PASS`, ou fichier `config/local.php`
-   (copier `config/local.example.php` ; ce fichier n'est pas versionné).
-4. Démarrer Apache et MySQL, puis ouvrir http://localhost/HCH/
-   (toujours la même adresse : `localhost` ou `127.0.0.1`, pas les deux en alternance).
-
-## Comptes
-
-- Clients et techniciens s'inscrivent via `auth/register.php`. Un technicien ou un garage
-  doit être validé par un administrateur avant de pouvoir se connecter.
-- Définir ou verrouiller le mot de passe d'un compte (ex. administrateur) :
+## Commandes utiles
+- Générer/verrouiller mot de passe administrateur :
+  ```bash
+  php scripts/set_password.php admin@example.com
+  php scripts/set_password.php admin@example.com --lock
   ```
-  php scripts/set_password.php <email>            (génère et affiche un mot de passe aléatoire)
-  php scripts/set_password.php <email> --lock     (verrouille le compte)
+- Appliquer des migrations (simulation puis apply) :
+  ```bash
+  php scripts/migrate_structure.php
+  php scripts/migrate_structure.php --apply
   ```
 
-## Sécurité
+## Tests
+Si des tests sont fournis, installez les dépendances via Composer, puis lancez :
+```bash
+composer install
+php composer.phar test
+```
 
-- Mots de passe : 8 caractères minimum (`PASSWORD_MIN_LENGTH` dans `config/config.php`).
-- Connexion : 5 échecs par email ou 20 par adresse IP en 15 minutes bloquent temporairement
-  les tentatives (`includes/login_throttle.php`). Les compteurs sont stockés dans le dossier
-  temporaire du système, ou dans `HCH_THROTTLE_DIR` si cette variable est définie.
-- Un compte supprimé, suspendu ou rejeté perd son accès dès sa requête suivante.
-- Formulaires et appels AJAX protégés par jeton CSRF (en-tête `X-CSRF-Token` posé
-  automatiquement par `assets/js/main.js`).
-- Les fichiers téléversés ne sont servis que par les scripts `ajax/download_*.php`,
-  qui vérifient les droits.
+## Développement
+- Les assets JS/CSS se trouvent dans `assets/`.
+- Respecter le fichier `config/local.example.php` pour les valeurs locales.
+
+## Résolution de problèmes
+- Veillez à utiliser toujours la même adresse locale (`localhost` ou `127.0.0.1`).
+- Vérifiez les permissions sur `uploads/` quand vous testez l'upload de fichiers.
+
+## Licence
+Ce projet n'a pas de licence précisée. Si vous souhaitez en ajouter une, créez un fichier `LICENSE` à la racine (ex.: `MIT`) et indiquez-le ici.
+
+---
+
+Pour toute information détaillée, consultez les documents dans `sql/` et les scripts d'administration dans `scripts/`.
 - `HCH_DEBUG=1` affiche les erreurs PHP (développement uniquement).
 
 ## Configuration des services externes
