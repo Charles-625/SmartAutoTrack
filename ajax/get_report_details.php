@@ -4,7 +4,7 @@ require_once '../config/database.php';
 
 header('Content-Type: application/json');
 
-requireRole('technicien');
+requireJsonAuth('technicien');
 
 $report_id = $_GET['id'] ?? null;
 

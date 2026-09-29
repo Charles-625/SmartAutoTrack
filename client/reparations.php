@@ -2,6 +2,7 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
+require_once '../includes/payments.php';
 
 requireRole('client');
 
@@ -75,6 +76,9 @@ $stmt = $conn->prepare("
 ");
 $stmt->execute($params);
 $reparations = $stmt->fetchAll();
+
+$paymentsEnabled = campayIsConfigured() && paymentsReady($conn);
+$paymentStates = $paymentsEnabled ? paymentStatesForRepairs($conn, array_column($reparations, 'id')) : [];
 
 // Récupérer les véhicules du client pour le filtre
 $stmt = $conn->prepare("SELECT idVehicule AS id, marque, modele, immatriculation FROM vehicule WHERE idClient = ? ORDER BY marque, modele");
@@ -272,6 +276,20 @@ include '../includes/header.php';
                                     <i class="fas fa-download"></i> Rapport
                                 </button>
                             <?php endif; ?>
+                            <?php if ($paymentsEnabled && $reparation['statut'] === 'validee' && (float)$reparation['cout'] > 0): $payState = $paymentStates[(int)$reparation['id']] ?? null; ?>
+                                <?php if ($payState === 'PAYE'): ?>
+                                    <span class="badge badge-success"><i class="fas fa-check-circle"></i> Payée</span>
+                                <?php elseif ($payState === 'EN_ATTENTE'): ?>
+                                    <span class="badge badge-warning"><i class="fas fa-hourglass-half"></i> Paiement en cours</span>
+                                <?php else: ?>
+                                    <button class="btn btn-primary btn-sm js-pay-repair"
+                                            data-reparation-id="<?php echo (int)$reparation['id']; ?>"
+                                            data-montant="<?php echo (int)round((float)$reparation['cout']); ?>"
+                                            data-titre="<?php echo h($reparation['titre'] ?? 'Réparation #' . $reparation['id']); ?>">
+                                        <i class="fas fa-mobile-alt"></i> Payer
+                                    </button>
+                                <?php endif; ?>
+                            <?php endif; ?>
                             <button class="btn btn-outline btn-sm" onclick="sendMessage(<?php echo $reparation['technicien_id']; ?>)">
                                 <i class="fas fa-envelope"></i> Contacter
                             </button>
@@ -297,6 +315,40 @@ include '../includes/header.php';
         </div>
     </div>
 </div>
+
+<?php if ($paymentsEnabled): ?>
+<!-- Modal paiement Mobile Money -->
+<div id="paymentModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Payer par Mobile Money</h3>
+            <button class="modal-close" id="closePaymentModal">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div id="paymentStepForm">
+                <p><strong id="paymentTitre"></strong></p>
+                <p>Montant à payer : <strong><span id="paymentMontant"></span> XAF</strong></p>
+                <div class="form-group">
+                    <label class="form-label" for="paymentPhone">Numéro MTN Mobile Money ou Orange Money</label>
+                    <input type="tel" id="paymentPhone" class="form-control" placeholder="6XX XX XX XX" inputmode="numeric" autocomplete="tel" maxlength="16">
+                </div>
+                <p class="text-muted" style="font-size: 0.85rem;">Une demande de confirmation sera envoyée sur ce téléphone.</p>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-primary" id="paymentSubmit">
+                        <i class="fas fa-mobile-alt"></i> Payer
+                    </button>
+                </div>
+            </div>
+            <div id="paymentStepWait" style="display: none; text-align: center; padding: 1rem 0;">
+                <i class="fas fa-spinner fa-spin fa-2x" style="color: var(--primary-color);"></i>
+                <p id="paymentWaitText" style="margin-top: 1rem;"></p>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <style>
 .filters-form {
@@ -564,6 +616,89 @@ function downloadReport(reparationId) {
 
 function sendMessage(technicienId) {
     window.location.href = `../messages/index.php?contact=${technicienId}`;
+}
+
+let paymentRepairId = null;
+let paymentPollTimer = null;
+let paymentLaunched = false;
+
+$(document).on('click', '.js-pay-repair', function() {
+    const btn = $(this);
+    paymentRepairId = btn.data('reparation-id');
+    $('#paymentTitre').text(btn.data('titre'));
+    $('#paymentMontant').text(Number(btn.data('montant')).toLocaleString('fr-FR'));
+    $('#paymentStepWait').hide();
+    $('#paymentStepForm').show();
+    $('#paymentModal').fadeIn();
+});
+
+$('#closePaymentModal').click(function() {
+    clearTimeout(paymentPollTimer);
+    $('#paymentModal').fadeOut();
+    if (paymentLaunched) {
+        location.reload();
+    }
+});
+
+$('#paymentSubmit').click(function() {
+    const phone = $('#paymentPhone').val().trim();
+    if (!phone) {
+        showToast('Saisissez votre numéro Mobile Money', 'error');
+        return;
+    }
+    const submit = $(this).prop('disabled', true);
+    $.ajax({
+        url: SITE_URL + 'ajax/campay_collect.php',
+        method: 'POST',
+        dataType: 'json',
+        data: { reparation_id: paymentRepairId, telephone: phone },
+        success: function(response) {
+            paymentLaunched = true;
+            $('#paymentStepForm').hide();
+            $('#paymentStepWait').show();
+            $('#paymentWaitText').text('Confirmez le paiement sur votre téléphone'
+                + (response.ussd_code ? ' (ou composez ' + response.ussd_code + ')' : '')
+                + '. Cette fenêtre se met à jour automatiquement.');
+            pollPayment(response.paiement_id, 0);
+        },
+        error: function(xhr) {
+            showToast((xhr.responseJSON && xhr.responseJSON.message) || 'Erreur lors du lancement du paiement', 'error');
+        },
+        complete: function() {
+            submit.prop('disabled', false);
+        }
+    });
+});
+
+function pollPayment(paiementId, attempt) {
+    if (attempt >= 36) {
+        $('#paymentWaitText').text('Paiement toujours en attente. Si vous l\'avez validé, il apparaîtra comme payé d\'ici quelques minutes.');
+        return;
+    }
+    paymentPollTimer = setTimeout(function() {
+        $.ajax({
+            url: SITE_URL + 'ajax/campay_status.php',
+            method: 'POST',
+            dataType: 'json',
+            data: { paiement_id: paiementId },
+            success: function(response) {
+                if (response.statut === 'PAYE') {
+                    showToast('Paiement reçu, merci !', 'success');
+                    setTimeout(function() { location.reload(); }, 1200);
+                } else if (response.statut === 'ECHOUE') {
+                    showToast('Le paiement a échoué ou a été refusé.', 'error');
+                    paymentLaunched = false;
+                    $('#paymentStepWait').hide();
+                    $('#paymentStepForm').show();
+                } else {
+                    pollPayment(paiementId, attempt + 1);
+                }
+            },
+            error: function() {
+                pollPayment(paiementId, attempt + 1);
+            }
+        });
+    }, 5000);
 }
 </script>
 

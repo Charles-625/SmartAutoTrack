@@ -9,19 +9,23 @@ $conn = $db->getConnection();
 
 // Traitement du changement de thème
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_theme') {
-    $theme = sanitize($_POST['theme'] ?? '');
-    
-    if (in_array($theme, ['light', 'dark', 'blue', 'green', 'purple', 'orange'])) {
-        $_SESSION['theme'] = $theme;
-        
-        // Sauvegarder en base de données
-        try {
-            $stmt = $conn->prepare("UPDATE utilisateur SET themePreference = ? WHERE idUtilisateur = ?");
-            $stmt->execute([$theme, $_SESSION['user_id']]);
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $error = 'Session expirée, merci de réessayer.';
+    } else {
+        $theme = sanitize($_POST['theme'] ?? '');
 
-            $success = 'Thème mis à jour avec succès !';
-        } catch (Exception $e) {
-            $error = 'Erreur lors de la sauvegarde du thème.';
+        if (in_array($theme, ['light', 'dark', 'blue', 'green', 'purple', 'orange'])) {
+            $_SESSION['theme'] = $theme;
+
+            // Sauvegarder en base de données
+            try {
+                $stmt = $conn->prepare("UPDATE utilisateur SET themePreference = ? WHERE idUtilisateur = ?");
+                $stmt->execute([$theme, $_SESSION['user_id']]);
+
+                $success = 'Thème mis à jour avec succès !';
+            } catch (Exception $e) {
+                $error = 'Erreur lors de la sauvegarde du thème.';
+            }
         }
     }
 }
@@ -81,6 +85,7 @@ include '../includes/header.php';
         <div class="section-content">
             <form method="POST" class="theme-form">
                 <input type="hidden" name="action" value="change_theme">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                 
                 <div class="form-group">
                     <label class="form-label">Thème de couleur</label>

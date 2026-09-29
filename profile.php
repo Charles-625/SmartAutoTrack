@@ -130,8 +130,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['form'])) {
                 $errors[] = 'Le mot de passe actuel est requis pour le changement.';
             } elseif (!verifyPassword($mot_de_passe_actuel, $user['mot_de_passe'])) {
                 $errors[] = 'Le mot de passe actuel est incorrect.';
-            } elseif (strlen($nouveau_mot_de_passe) < 6) {
-                $errors[] = 'Le nouveau mot de passe doit contenir au moins 6 caractères.';
+            } elseif (strlen($nouveau_mot_de_passe) < PASSWORD_MIN_LENGTH) {
+                $errors[] = 'Le nouveau mot de passe doit contenir au moins ' . PASSWORD_MIN_LENGTH . ' caractères.';
             } elseif ($nouveau_mot_de_passe !== $confirmation) {
                 $errors[] = 'Les nouveaux mots de passe ne correspondent pas.';
             }
@@ -487,7 +487,7 @@ include 'includes/header.php';
                         <div class="form-group">
                             <label class="form-label">Nouveau mot de passe *</label>
                             <input type="password" name="nouveau_mot_de_passe" class="form-control" id="newPassword">
-                            <div class="form-text">Minimum 6 caractères</div>
+                            <div class="form-text">Minimum <?php echo PASSWORD_MIN_LENGTH; ?> caractères</div>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Confirmation *</label>
@@ -643,9 +643,9 @@ $(document).ready(function() {
             return false;
         }
         
-        if (newPassword.length < 6) {
+        if (newPassword.length < <?php echo PASSWORD_MIN_LENGTH; ?>) {
             e.preventDefault();
-            showToast('Le nouveau mot de passe doit contenir au moins 6 caractères', 'error');
+            showToast('Le nouveau mot de passe doit contenir au moins <?php echo PASSWORD_MIN_LENGTH; ?> caractères', 'error');
             return false;
         }
         

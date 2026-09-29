@@ -1,8 +1,20 @@
 DirectoryIndex index.php
 
 <IfModule mod_headers.c>
-    Header set Cache-Control "no-store, no-cache, must-revalidate"
     Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Pages dynamiques (données personnelles) : jamais mises en cache
+    <FilesMatch "\\.php$">
+        Header set Cache-Control "no-store, no-cache, must-revalidate"
+    </FilesMatch>
+
+    # Fichiers statiques : gardés en cache mais revalidés (ETag) à chaque
+    # chargement, pour qu'une modification de CSS/JS soit prise en compte.
+    <FilesMatch "\\.(css|js|png|jpe?g|gif|svg|webp|ico|woff2?)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
 </IfModule>
 
 # Fichiers sensibles ou techniques : jamais servis par le web

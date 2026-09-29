@@ -1,9 +1,8 @@
 # Schéma actuel de la base `charles` (depuis le 23/09/2026)
 
-Ce schéma a été créé directement en base par l'utilisateur, indépendamment des
-fichiers `.sql` du dépôt (tous obsolètes, voir le bandeau sur chacun d'eux).
-Il n'existe pas de script de création : ce document sert de référence, à jour
-après les 6 phases d'adaptation du code (voir historique de session).
+Ce schéma a été créé directement en base. Il n'existe pas encore de script de
+création complet : ce document sert de référence, et `scripts/migrate_structure.php`
+ajoute les colonnes et tables dont le site PHP a besoin.
 
 ## Tables
 
@@ -30,8 +29,14 @@ intervention (idIntervention, idClient, idVehicule, idTechnicien, idGarage,
 reparation (idReparation, idIntervention, idTechnicien, titre, description,
             diagnostic, travauxEffectues, piecesUtilisees, recommandations,
             cout, dureeIntervention, dateReparation, statut)
-paiement, assistantia, analyseia, journalactivites   (non utilisées par le
-            site PHP actuel — prévues pour un périmètre futur)
+paiement   (idPaiement, idClient, idIntervention, montant, datePaiement,
+            typePaiement, statut EN_ATTENTE/PAYE/ECHOUE/ANNULE ; ajoutées par
+            scripts/migrate_structure.php pour CamPay : idReparation,
+            referenceExterne (unique), referenceCampay, telephone, operateur,
+            messageErreur)
+journalactivites (journal des actions, alimenté par includes/activity_log.php)
+assistantia, analyseia   (non utilisées : l'historique de l'assistant IA est
+            conservé en session)
 
 -- Tables reprises telles quelles de l'ancien schéma (pas d'équivalent neuf) :
 messages (id, expediteur_id, destinataire_id, sujet, contenu, lu, date_envoi)
@@ -42,7 +47,7 @@ technician_documents (id, technicien_id, type_document, nom_fichier,
 
 ## Colonnes ajoutées pendant la migration du code (phases 2-6)
 
-Toutes ajoutées par `scripts/migrate_legacy_data.php` (idempotent, relançable).
+Toutes ajoutées par `scripts/migrate_structure.php` (idempotent, relançable).
 Aucune n'existait dans le schéma initial du 23/09 :
 
 | Table | Colonnes ajoutées | Pourquoi |

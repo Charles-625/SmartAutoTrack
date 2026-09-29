@@ -134,10 +134,11 @@ class ThemeManager {
 
     saveThemeToServer(theme) {
         // Envoyer le thème au serveur via AJAX
-        fetch('ajax/save_theme.php', {
+        fetch((typeof SITE_URL !== 'undefined' ? SITE_URL : '') + 'ajax/save_theme.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': typeof smartautotrackCsrfToken === 'function' ? smartautotrackCsrfToken() : '',
             },
             body: `theme=${encodeURIComponent(theme)}`
         }).catch(error => {

@@ -5,13 +5,21 @@ require_once '../config/database.php';
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {
+    http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Non authentifié']);
     exit;
 }
 
-$notification_id = $_POST['notification_id'] ?? null;
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !verifyRequestCSRF()) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Session expirée, merci de recharger la page.']);
+    exit;
+}
+
+$notification_id = filter_var($_POST['notification_id'] ?? null, FILTER_VALIDATE_INT);
 
 if (!$notification_id) {
+    http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'ID de notification manquant']);
     exit;
 }
@@ -31,6 +39,8 @@ try {
     echo json_encode(['success' => true]);
     
 } catch (Exception $e) {
+    error_log('[SmartAutoTrack] mark_notification_read : ' . $e->getMessage());
+    http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Erreur lors de la mise à jour']);
 }
 ?>

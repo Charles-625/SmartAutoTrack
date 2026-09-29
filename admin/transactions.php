@@ -3,11 +3,13 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
+require_once '../includes/payments.php';
 
 requireRole('admin');
 
 $db = new Database();
 $conn = $db->getConnection();
+$campayColumns = paymentsReady($conn);
 
 // La table `paiement` existe déjà dans le schéma : supervision réelle,
 // aucune transaction fictive créée pour peupler cette page.
@@ -20,6 +22,7 @@ $whereSql = $where ? implode(' AND ', $where) : '1=1';
 $stmt = $conn->prepare("
     SELECT p.idPaiement AS id, p.montant, p.datePaiement, p.typePaiement, p.statut,
            u.nom, u.prenom, i.type AS intervention_type
+           " . ($campayColumns ? ", p.referenceCampay, p.operateur, p.telephone, p.messageErreur" : "") . "
     FROM paiement p
     JOIN utilisateur u ON u.idUtilisateur = p.idClient
     LEFT JOIN intervention i ON i.idIntervention = p.idIntervention
@@ -96,13 +99,13 @@ include '../includes/header.php';
                         <tbody>
                             <?php foreach ($paiements as $p): ?>
                                 <tr>
-                                    <td>#<?php echo (int)$p['id']; ?></td>
+                                    <td>#<?php echo (int)$p['id']; ?><?php if (!empty($p['referenceCampay'])): ?><br><small title="Référence CamPay"><?php echo h($p['referenceCampay']); ?></small><?php endif; ?></td>
                                     <td><?php echo h($p['prenom'] . ' ' . $p['nom']); ?></td>
                                     <td><?php echo h($p['intervention_type'] ?: '—'); ?></td>
                                     <td><?php echo number_format((float)$p['montant'], 0, ',', ' '); ?> XAF</td>
                                     <td><?php echo h($p['datePaiement'] ? date('d/m/Y', strtotime($p['datePaiement'])) : '—'); ?></td>
-                                    <td><?php echo h($p['typePaiement'] ?: '—'); ?></td>
-                                    <td><span class="av2-badge <?php echo h($statutBadge[$p['statut']] ?? 'neutral'); ?>"><?php echo h($statutLabels[$p['statut']] ?? $p['statut']); ?></span></td>
+                                    <td><?php echo h(($p['typePaiement'] ?: '—') . (!empty($p['operateur']) ? ' · ' . $p['operateur'] : '')); ?><?php if (!empty($p['telephone'])): ?><br><small><?php echo h($p['telephone']); ?></small><?php endif; ?></td>
+                                    <td><span class="av2-badge <?php echo h($statutBadge[$p['statut']] ?? 'neutral'); ?>" title="<?php echo h($p['messageErreur'] ?? ''); ?>"><?php echo h($statutLabels[$p['statut']] ?? $p['statut']); ?></span></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

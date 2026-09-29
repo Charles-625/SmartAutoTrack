@@ -6,9 +6,7 @@
  *   php scripts/set_password.php <email> <motdepasse>
  *   php scripts/set_password.php <email> --lock     -> verrouille le compte (connexion impossible)
  *
- * Agit sur la table `utilisateur` du nouveau schéma (base par défaut : charles).
- * Pour l'ancienne base de l'API (smartautotrack, table `users`), ce script ne
- * s'applique plus : voir api/ si besoin.
+ * Agit sur la table `utilisateur` (base par défaut : charles).
  */
 if (PHP_SAPI !== 'cli') {
     http_response_code(403);
