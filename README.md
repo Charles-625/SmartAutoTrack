@@ -69,6 +69,11 @@ la transaction confirmée. Les paiements apparaissent dans `admin/transactions.p
    `https://<votre-domaine>/webhooks/campay.php`. Elle doit être joignable depuis Internet ;
    en local, le suivi du statut par la page client suffit à confirmer les paiements.
 
+La démo CamPay refuse les montants supérieurs à 25 XAF : en démo, le client voit et
+paie « officiellement » le coût réel de la réparation (c'est lui qui est enregistré),
+mais seuls `CAMPAY_DEMO_MAX_AMOUNT` XAF (25 par défaut) sont débités. En production
+(`https://www.campay.net`), le montant débité est toujours le montant réel.
+
 Le statut d'un paiement est toujours revérifié auprès de l'API CamPay (le webhook n'est
 qu'un signal, sa signature est contrôlée). `CAMPAY_SIMULATION=true` simule des paiements
 réussis sans appeler CamPay : réservé au développement.

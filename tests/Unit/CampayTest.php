@@ -47,6 +47,29 @@ final class CampayTest extends TestCase
 		$this->assertSame('EN_ATTENTE', campayStatusToPaiement(''));
 	}
 
+	/** @dataProvider chargedAmounts */
+	public function testChargedAmountIsCappedOnDemoOnly(string $baseUrl, string $max, int $due, int $expected): void
+	{
+		putenv("CAMPAY_BASE_URL=$baseUrl");
+		putenv("CAMPAY_DEMO_MAX_AMOUNT=$max");
+		try {
+			$this->assertSame($expected, campayChargedAmount($due));
+		} finally {
+			putenv('CAMPAY_BASE_URL');
+			putenv('CAMPAY_DEMO_MAX_AMOUNT');
+		}
+	}
+
+	public static function chargedAmounts(): array
+	{
+		return [
+			'démo : plafonné'            => ['https://demo.campay.net', '25', 15000, 25],
+			'démo : sous le plafond'     => ['https://demo.campay.net', '25', 10, 10],
+			'démo : plafond désactivé'   => ['https://demo.campay.net', '0', 15000, 15000],
+			'production : jamais plafonné' => ['https://www.campay.net', '25', 15000, 15000],
+		];
+	}
+
 	public function testAcceptsValidSignature(): void
 	{
 		$this->assertTrue(campayVerifyWebhookSignature(self::jwt(['reference' => 'abc']), self::KEY));

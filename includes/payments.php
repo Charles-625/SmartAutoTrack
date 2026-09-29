@@ -128,8 +128,9 @@ function paymentStart(PDO $conn, int $clientId, int $repairId, string $rawPhone)
     }
 
     $paiement = ['idPaiement' => $paiementId, 'idClient' => $clientId, 'idIntervention' => $repair['idIntervention'], 'idReparation' => $repairId];
+    $charged = campayChargedAmount($amount);
     try {
-        $collect = campayCollect($amount, $phone, 'SmartAutoTrack - ' . ($repair['titre'] ?: 'Réparation #' . $repairId), $externalReference);
+        $collect = campayCollect($charged, $phone, 'SmartAutoTrack - ' . ($repair['titre'] ?: 'Réparation #' . $repairId), $externalReference);
     } catch (Throwable $e) {
         $message = $e instanceof CampayException ? $e->getMessage() : 'Le service de paiement est injoignable. Réessayez plus tard.';
         if (!$e instanceof CampayException) {
@@ -142,7 +143,8 @@ function paymentStart(PDO $conn, int $clientId, int $repairId, string $rawPhone)
 
     $conn->prepare("UPDATE paiement SET referenceCampay = ?, operateur = ? WHERE idPaiement = ?")
         ->execute([$collect['reference'], $collect['operator'], $paiementId]);
-    paymentLog($conn, 'Paiement initié', $paiement, $amount . ' XAF par Mobile Money');
+    paymentLog($conn, 'Paiement initié', $paiement, $amount . ' XAF par Mobile Money'
+        . ($charged !== $amount ? ' (démo CamPay : ' . $charged . ' XAF débités)' : ''));
 
     return ['idPaiement' => $paiementId, 'montant' => $amount, 'ussd_code' => $collect['ussd_code'], 'operator' => $collect['operator']];
 }
@@ -186,8 +188,9 @@ function paymentApplyCampayStatus(PDO $conn, array $paiement, array $transaction
     }
 
     $error = null;
-    if ($new === 'PAYE' && isset($transaction['amount']) && (int)round((float)$transaction['amount']) !== (int)round((float)$paiement['montant'])) {
-        error_log('[SmartAutoTrack] CamPay : montant confirmé ' . $transaction['amount'] . ' différent du montant dû ' . $paiement['montant'] . ' (paiement #' . $paiement['idPaiement'] . ')');
+    $expected = campayChargedAmount((int)round((float)$paiement['montant']));
+    if ($new === 'PAYE' && isset($transaction['amount']) && (int)round((float)$transaction['amount']) !== $expected) {
+        error_log('[SmartAutoTrack] CamPay : montant confirmé ' . $transaction['amount'] . ' différent du montant attendu ' . $expected . ' (paiement #' . $paiement['idPaiement'] . ')');
         $new = 'ECHOUE';
         $error = 'Montant confirmé (' . $transaction['amount'] . ' XAF) différent du montant dû : vérification manuelle nécessaire.';
     } elseif ($new === 'ECHOUE') {

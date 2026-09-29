@@ -4,7 +4,7 @@
  *
  * Configuration (config/local.php ou variables d'environnement) :
  * CAMPAY_USE_DEMO, CAMPAY_BASE_URL, CAMPAY_TOKEN ou CAMPAY_USERNAME/PASSWORD,
- * CAMPAY_WEBHOOK_KEY, CAMPAY_SIMULATION.
+ * CAMPAY_WEBHOOK_KEY, CAMPAY_SIMULATION, CAMPAY_DEMO_MAX_AMOUNT.
  */
 
 require_once __DIR__ . '/../config/config.php';
@@ -29,6 +29,20 @@ function campayIsConfigured(): bool {
     return campayIsSimulation()
         || appConfig('CAMPAY_TOKEN')
         || (appConfig('CAMPAY_USERNAME') && appConfig('CAMPAY_PASSWORD'));
+}
+
+function campayIsDemo(): bool {
+    return parse_url(campayBaseUrl(), PHP_URL_HOST) === 'demo.campay.net';
+}
+
+/**
+ * Montant réellement débité par CamPay. La démo CamPay refuse les montants
+ * supérieurs à 25 XAF : le montant est alors plafonné à CAMPAY_DEMO_MAX_AMOUNT
+ * (0 pour désactiver), le montant dû restant celui enregistré en base.
+ */
+function campayChargedAmount(int $amount): int {
+    $max = (int)appConfig('CAMPAY_DEMO_MAX_AMOUNT', 25);
+    return campayIsDemo() && $max > 0 ? min($amount, $max) : $amount;
 }
 
 /**

@@ -19,6 +19,7 @@ return [
     'CAMPAY_TOKEN' => '',               // jeton d'accès permanent (prioritaire sur USERNAME/PASSWORD)
     'CAMPAY_WEBHOOK_KEY' => '',         // clé de signature des notifications (webhook)
     'CAMPAY_SIMULATION' => 'false',     // true : aucun appel à CamPay, paiements validés localement (développement)
+    'CAMPAY_DEMO_MAX_AMOUNT' => '25',   // démo uniquement : montant débité plafonné (la démo refuse plus de 25 XAF), 0 = pas de plafond
 
     // Assistant IA (Hugging Face Inference Providers)
     'HF_TOKEN' => '',                   // jeton avec la permission « Make calls to Inference Providers »
