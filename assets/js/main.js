@@ -2,6 +2,21 @@
  * SmartAutoTrack - JavaScript principal
  */
 
+function smartautotrackCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
+if (window.jQuery) {
+    jQuery.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+            if (!settings.crossDomain) {
+                xhr.setRequestHeader('X-CSRF-Token', smartautotrackCsrfToken());
+            }
+        }
+    });
+}
+
 // Configuration globale
 window.SmartAutoTrack = {
     // Fonctions utilitaires

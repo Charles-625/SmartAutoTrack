@@ -37,3 +37,8 @@ dist/
 
 # Composer
 composer.phar
+composer-setup.php
+
+# PHPUnit
+.phpunit.cache/
+tests/.phpunit.cache

@@ -4,7 +4,7 @@ require_once '../config/database.php';
 
 header('Content-Type: application/json');
 
-requireAuth();
+requireJsonAuth();
 
 $anomaly_id = $_GET['id'] ?? null;
 

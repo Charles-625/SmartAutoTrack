@@ -8,7 +8,10 @@ $db = new Database();
 $conn = $db->getConnection();
 
 // Traitement du changement de thème
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_theme') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_theme'
+    && !verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+    $error = 'Session expirée, merci de réessayer.';
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_theme') {
     $theme = sanitize($_POST['theme'] ?? '');
     
     if (in_array($theme, ['light', 'dark', 'blue', 'green', 'purple', 'orange'])) {
@@ -81,6 +84,7 @@ include '../includes/header.php';
         <div class="section-content">
             <form method="POST" class="theme-form">
                 <input type="hidden" name="action" value="change_theme">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                 
                 <div class="form-group">
                     <label class="form-label">Thème de couleur</label>

@@ -4,7 +4,7 @@ require_once '../config/database.php';
 
 header('Content-Type: application/json');
 
-requireRole('admin');
+requireJsonAuth('admin');
 
 $client_id = $_GET['id'] ?? null;
 

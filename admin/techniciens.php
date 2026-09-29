@@ -58,7 +58,7 @@ if ($action === 'create_technicien' && $postOk) {
     if (empty($newEmail) || !validateEmail($newEmail)) $errors[] = 'Email invalide.';
     if (empty($newTelephone)) $errors[] = 'Le téléphone est requis.';
     elseif (!validateDigitsOnly($newTelephone)) $errors[] = 'Le téléphone ne doit contenir que des chiffres.';
-    if (strlen($newPassword) < 6) $errors[] = 'Le mot de passe doit contenir au moins 6 caractères.';
+    if (strlen($newPassword) < PASSWORD_MIN_LENGTH) $errors[] = 'Le mot de passe doit contenir au moins ' . PASSWORD_MIN_LENGTH . ' caractères.';
     if ($newPassword !== $newPasswordConfirm) $errors[] = 'Les mots de passe ne correspondent pas.';
 
     $attachedGarage = null;
@@ -434,8 +434,8 @@ include '../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="av2-form-group"><label>Mot de passe</label><input type="password" name="mot_de_passe" required minlength="6"></div>
-            <div class="av2-form-group"><label>Confirmation</label><input type="password" name="confirmation" required minlength="6"></div>
+            <div class="av2-form-group"><label>Mot de passe</label><input type="password" name="mot_de_passe" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>"></div>
+            <div class="av2-form-group"><label>Confirmation</label><input type="password" name="confirmation" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>"></div>
             <div class="av2-modal-actions">
                 <button type="button" class="av2-btn-outline" id="closeNewTechnicien">Annuler</button>
                 <button type="submit" class="av2-btn-primary">Créer le technicien</button>

@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($telephone)) $errors[] = 'Le téléphone est requis.';
         elseif (!validateDigitsOnly($telephone)) $errors[] = 'Le téléphone ne doit contenir que des chiffres.';
         if (empty($mot_de_passe)) $errors[] = 'Le mot de passe est requis.';
-        if (strlen($mot_de_passe) < 6) $errors[] = 'Le mot de passe doit contenir au moins 6 caractères.';
+        if (strlen($mot_de_passe) < PASSWORD_MIN_LENGTH) $errors[] = 'Le mot de passe doit contenir au moins ' . PASSWORD_MIN_LENGTH . ' caractères.';
         if ($mot_de_passe !== $confirmation) $errors[] = 'Les mots de passe ne correspondent pas.';
         if (!in_array($role, ['client', 'technicien'])) $errors[] = 'Rôle invalide.';
         
@@ -383,7 +383,7 @@ include '../includes/header.php';
                 <div class="form-group">
                     <label class="form-label">Mot de passe *</label>
                     <input type="password" name="mot_de_passe" class="form-control" required>
-                    <div class="form-text">Minimum 6 caractères</div>
+                    <div class="form-text">Minimum <?php echo PASSWORD_MIN_LENGTH; ?> caractères</div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Confirmation *</label>

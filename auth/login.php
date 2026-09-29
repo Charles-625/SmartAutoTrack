@@ -2,6 +2,7 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
+require_once '../includes/login_throttle.php';
 
 $errors = [];
 
@@ -16,6 +17,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($email)) $errors[] = 'L\'email est requis.';
         if (empty($mot_de_passe)) $errors[] = 'Le mot de passe est requis.';
 
+        $clientIp = $_SERVER['REMOTE_ADDR'] ?? 'inconnue';
+        if (empty($errors)) {
+            $retryAfter = loginThrottleRetryAfter($email, $clientIp);
+            if ($retryAfter > 0) {
+                http_response_code(429);
+                header('Retry-After: ' . $retryAfter);
+                $errors[] = 'Trop de tentatives de connexion. Réessayez dans ' . (int)ceil($retryAfter / 60) . ' minute(s).';
+            }
+        }
+
         if (empty($errors)) {
             $db = new Database();
             $conn = $db->getConnection();
@@ -29,8 +40,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$user || !$profile || !verifyPassword($mot_de_passe, $user['motDePasse'])) {
                 // Message volontairement générique : ne jamais révéler si
                 // c'est l'email ou le mot de passe qui est en cause.
+                loginThrottleRecordFailure($email, $clientIp);
                 $errors[] = 'Email ou mot de passe incorrect.';
             } elseif (!isAccountUsable($profile)) {
+                loginThrottleClear($email);
                 // Identifiants corrects mais compte non utilisable (en attente,
                 // rejeté, suspendu) : message clair et spécifique — jamais un
                 // dashboard, jamais le message générique ci-dessus.
@@ -41,6 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // fixation de session), puis on ne stocke QUE des données
                 // authentifiées côté serveur.
                 session_regenerate_id(true);
+                loginThrottleClear($email);
 
                 $_SESSION['user_id'] = $user['idUtilisateur'];
                 $_SESSION['nom'] = $user['nom'];

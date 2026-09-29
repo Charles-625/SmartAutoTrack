@@ -93,6 +93,23 @@ function requireRole($role) {
     }
 }
 
+/**
+ * Équivalent de requireAuth()/requireRole() pour les endpoints JSON :
+ * répond 401/403 en JSON au lieu de rediriger vers une page HTML.
+ */
+function requireJsonAuth($role = null) {
+    if (!isset($_SESSION['user_id']) || !isset($_SESSION['role'])) {
+        http_response_code(401);
+        header('Content-Type: application/json');
+        exit(json_encode(['success' => false, 'message' => 'Non authentifié']));
+    }
+    if ($role !== null && $_SESSION['role'] !== $role) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        exit(json_encode(['success' => false, 'message' => 'Accès refusé']));
+    }
+}
+
 function formatDate($date) {
     return date('d/m/Y H:i', strtotime($date));
 }
@@ -105,7 +122,15 @@ function generateCSRFToken() {
 }
 
 function verifyCSRFToken($token) {
-    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+    return isset($_SESSION['csrf_token']) && is_string($token) && hash_equals($_SESSION['csrf_token'], $token);
+}
+
+/**
+ * Pour les endpoints AJAX : jeton accepté en champ POST `csrf_token` ou en
+ * en-tête `X-CSRF-Token` (posé automatiquement par assets/js/main.js).
+ */
+function verifyRequestCSRF() {
+    return verifyCSRFToken($_POST['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
 }
 
 /**
@@ -147,6 +172,8 @@ function validateDigitsOnly($value) {
     return $value !== '' && preg_match('/^[0-9]+$/', $value) === 1;
 }
 
+const PASSWORD_MIN_LENGTH = 8;
+
 function hashPassword($password) {
     return password_hash($password, PASSWORD_DEFAULT);
 }
@@ -179,3 +206,30 @@ function destroySession() {
         setcookie('PHPSESSID', '', time() - 42000, '/');
     }
 }
+
+/**
+ * Un compte supprimé, suspendu ou rejeté perd son accès dès sa requête
+ * suivante, et pas seulement à sa prochaine connexion : sa session est vidée
+ * et reçoit un nouvel identifiant (requireAuth() le renverra alors au login).
+ */
+function enforceActiveSession() {
+    if (!isset($_SESSION['user_id'])) {
+        return;
+    }
+
+    require_once __DIR__ . '/database.php';
+    require_once __DIR__ . '/roles.php';
+
+    $conn = (new Database())->getConnection();
+    if (!$conn) {
+        return;
+    }
+
+    $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
+    if (!$profile || $profile['role'] !== ($_SESSION['role'] ?? null) || !isAccountUsable($profile)) {
+        $_SESSION = [];
+        session_regenerate_id(true);
+    }
+}
+
+enforceActiveSession();

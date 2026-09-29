@@ -4,9 +4,15 @@ require_once '../config/database.php';
 
 header('Content-Type: application/json');
 
-// Vérifier que l'utilisateur est connecté
 if (!isset($_SESSION['user_id'])) {
+    http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Non autorisé']);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !verifyRequestCSRF()) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Session expirée, merci de recharger la page.']);
     exit;
 }
 
@@ -14,7 +20,8 @@ $theme = $_POST['theme'] ?? '';
 
 // Valider le thème
 $allowed_themes = ['light', 'dark', 'blue', 'green', 'purple', 'orange'];
-if (!in_array($theme, $allowed_themes)) {
+if (!in_array($theme, $allowed_themes, true)) {
+    http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Thème invalide']);
     exit;
 }
@@ -33,6 +40,8 @@ try {
     echo json_encode(['success' => true, 'message' => 'Thème sauvegardé']);
     
 } catch (Exception $e) {
+    error_log('[SmartAutoTrack] save_theme : ' . $e->getMessage());
+    http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Erreur lors de la sauvegarde']);
 }
 ?>

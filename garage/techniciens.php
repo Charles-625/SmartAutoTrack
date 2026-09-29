@@ -40,7 +40,7 @@ if ($action === 'create' && $postOk) {
     if (empty($newEmail) || !validateEmail($newEmail)) $errors[] = 'Email invalide.';
     if (empty($newTelephone)) $errors[] = 'Le téléphone est requis.';
     elseif (!validateDigitsOnly($newTelephone)) $errors[] = 'Le téléphone ne doit contenir que des chiffres.';
-    if (strlen($newPassword) < 6) $errors[] = 'Le mot de passe doit contenir au moins 6 caractères.';
+    if (strlen($newPassword) < PASSWORD_MIN_LENGTH) $errors[] = 'Le mot de passe doit contenir au moins ' . PASSWORD_MIN_LENGTH . ' caractères.';
     if ($newPassword !== $newPasswordConfirm) $errors[] = 'Les mots de passe ne correspondent pas.';
 
     if (empty($errors)) {
@@ -248,8 +248,8 @@ include '../includes/header.php';
             <div class="gv2-form-group"><label>Téléphone</label><input type="tel" name="telephone" required></div>
             <div class="gv2-form-group"><label>Spécialité</label><input type="text" name="specialite" placeholder="Ex. : Freinage, Moteur & diagnostic... (optionnel)"></div>
             <div class="gv2-form-row">
-                <div class="gv2-form-group"><label>Mot de passe</label><input type="password" name="mot_de_passe" required minlength="6"></div>
-                <div class="gv2-form-group"><label>Confirmation</label><input type="password" name="confirmation" required minlength="6"></div>
+                <div class="gv2-form-group"><label>Mot de passe</label><input type="password" name="mot_de_passe" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>"></div>
+                <div class="gv2-form-group"><label>Confirmation</label><input type="password" name="confirmation" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>"></div>
             </div>
             <div class="gv2-modal-actions">
                 <button type="button" class="gv2-btn-outline" id="closeNewTechnicien">Annuler</button>
