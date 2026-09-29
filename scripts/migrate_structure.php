@@ -3,7 +3,8 @@
  * Complète le schéma de `charles` (utilisateur/vehicule/intervention/...,
  * créé le 23/09/2026) avec les colonnes dont le site PHP a besoin, et crée
  * les 3 tables sans équivalent dans ce schéma (messages, notifications,
- * technician_documents), rattachées à lui par clé étrangère.
+ * technician_documents), rattachées à lui par clé étrangère. Prépare aussi
+ * la table `paiement` pour le paiement Mobile Money CamPay.
  *
  * Idempotent : peut être relancé sans effet si tout est déjà en place.
  * Ne touche à aucune donnée.
@@ -129,6 +130,99 @@ if (!tableExists($conn, 'technician_documents')) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 }
 if ($n === $before) echo "  ok, les 3 tables existent déjà\n";
+
+// ============================================================
+// 3) Paiement Mobile Money (CamPay)
+// ============================================================
+echo "\n3. Paiement CamPay\n";
+$before = $n;
+
+function columnInfo(PDO $c, string $t, string $col): ?array {
+    $s = $c->prepare("SELECT DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?");
+    $s->execute([$t, $col]);
+    $row = $s->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
+}
+function indexExists(PDO $c, string $t, string $index): bool {
+    $s = $c->prepare("SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND INDEX_NAME=?");
+    $s->execute([$t, $index]);
+    return (bool)$s->fetchColumn();
+}
+/** Ajoute des valeurs à une colonne ENUM existante, en conservant nullabilité et défaut. */
+function ensureEnumValues(PDO $c, bool $apply, string $t, string $col, array $values): void {
+    $info = columnInfo($c, $t, $col);
+    if (!$info || strtolower($info['DATA_TYPE']) !== 'enum') return;
+    preg_match_all("/'((?:[^']|'')*)'/", $info['COLUMN_TYPE'], $m);
+    $existing = array_map(fn($v) => str_replace("''", "'", $v), $m[1]);
+    $missing = array_values(array_diff($values, $existing));
+    if (!$missing) return;
+    announce($apply, "ajouter " . implode(', ', $missing) . " aux valeurs de $t.$col");
+    if (!$apply) return;
+    $all = array_merge($existing, $missing);
+    $enum = "ENUM(" . implode(',', array_map(fn($v) => $c->quote($v), $all)) . ")";
+    $default = $info['COLUMN_DEFAULT'];
+    $nullable = $info['IS_NULLABLE'] === 'YES';
+    $sql = "ALTER TABLE `$t` MODIFY `$col` $enum " . ($nullable ? 'NULL' : 'NOT NULL');
+    if ($default !== null && strtoupper($default) !== 'NULL') {
+        $sql .= ' DEFAULT ' . $c->quote(trim($default, "'"));
+    } elseif ($nullable) {
+        $sql .= ' DEFAULT NULL';
+    }
+    $c->exec($sql);
+}
+
+if (!tableExists($conn, 'paiement')) {
+    announce($apply, 'créer la table paiement');
+    if ($apply) $conn->exec("CREATE TABLE paiement (
+        idPaiement INT AUTO_INCREMENT PRIMARY KEY,
+        idClient INT NOT NULL,
+        idIntervention INT NULL,
+        montant DECIMAL(10,2) NOT NULL,
+        datePaiement DATETIME NULL,
+        typePaiement VARCHAR(30) NULL,
+        statut ENUM('EN_ATTENTE','PAYE','ECHOUE','ANNULE') NOT NULL DEFAULT 'EN_ATTENTE',
+        CONSTRAINT fk_paiement_client FOREIGN KEY (idClient) REFERENCES client(idClient) ON DELETE RESTRICT,
+        CONSTRAINT fk_paiement_intervention FOREIGN KEY (idIntervention) REFERENCES intervention(idIntervention) ON DELETE RESTRICT
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+}
+
+if (tableExists($conn, 'paiement')) {
+    $paiementColumns = [
+        ['idReparation', 'INT NULL'],
+        ['referenceExterne', 'VARCHAR(64) NULL'],
+        ['referenceCampay', 'VARCHAR(100) NULL'],
+        ['telephone', 'VARCHAR(20) NULL'],
+        ['operateur', 'VARCHAR(30) NULL'],
+        ['messageErreur', 'VARCHAR(255) NULL'],
+    ];
+    foreach ($paiementColumns as [$c, $def]) {
+        if (!colExists($conn, 'paiement', $c)) {
+            announce($apply, "ajouter paiement.$c");
+            if ($apply) $conn->exec("ALTER TABLE paiement ADD COLUMN `$c` $def");
+        }
+    }
+
+    ensureEnumValues($conn, $apply, 'paiement', 'statut', ['EN_ATTENTE', 'PAYE', 'ECHOUE', 'ANNULE']);
+    ensureEnumValues($conn, $apply, 'paiement', 'typePaiement', ['MOBILE_MONEY']);
+    $type = columnInfo($conn, 'paiement', 'typePaiement');
+    if ($type && in_array(strtolower($type['DATA_TYPE']), ['varchar', 'char'], true) && (int)$type['CHARACTER_MAXIMUM_LENGTH'] < 12) {
+        announce($apply, 'agrandir paiement.typePaiement à 30 caractères (pour MOBILE_MONEY)');
+        if ($apply) $conn->exec("ALTER TABLE paiement MODIFY typePaiement VARCHAR(30) " . ($type['IS_NULLABLE'] === 'YES' ? 'NULL' : 'NOT NULL'));
+    }
+
+    $indexes = [
+        ['uq_paiement_reference_externe', 'ADD UNIQUE INDEX uq_paiement_reference_externe (referenceExterne)'],
+        ['idx_paiement_reference_campay', 'ADD INDEX idx_paiement_reference_campay (referenceCampay)'],
+        ['idx_paiement_reparation', 'ADD INDEX idx_paiement_reparation (idReparation)'],
+    ];
+    foreach ($indexes as [$name, $ddl]) {
+        if (!indexExists($conn, 'paiement', $name)) {
+            announce($apply, "créer l'index $name");
+            if ($apply) $conn->exec("ALTER TABLE paiement $ddl");
+        }
+    }
+}
+if ($n === $before) echo "  ok, la table paiement est prête\n";
 
 echo "\n" . ($n === 0 ? "Rien à faire, tout est déjà en place." :
     ($apply ? "$n action(s) appliquée(s)." : "$n action(s) à appliquer. Relancez avec --apply.")) . "\n";

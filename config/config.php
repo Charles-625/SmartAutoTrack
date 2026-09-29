@@ -17,8 +17,8 @@ if (!defined('SITE_NAME')) {
     $basePath = '/HCH/';
 
     if ($documentRoot && $projectRoot && strpos($projectRoot, $documentRoot) === 0) {
-        $relativePath = substr($projectRoot, strlen($documentRoot));
-        $basePath = '/' . trim($relativePath, '/') . '/';
+        $relativePath = trim(substr($projectRoot, strlen($documentRoot)), '/');
+        $basePath = $relativePath === '' ? '/' : '/' . $relativePath . '/';
     }
 
     define('SITE_NAME', 'SmartAutoTrack');
@@ -67,6 +67,32 @@ if (session_status() === PHP_SESSION_NONE) {
 if (isset($_COOKIE['PHPSESSID'])) {
     setcookie('PHPSESSID', '', time() - 42000, '/');
     unset($_COOKIE['PHPSESSID']);
+}
+
+/**
+ * Paramètre de configuration : variable d'environnement du même nom si elle
+ * est définie, sinon clé du tableau renvoyé par config/local.php (non versionné).
+ */
+function appConfig(string $key, $default = null) {
+    $env = getenv($key);
+    if ($env !== false && $env !== '') {
+        return $env;
+    }
+    static $local = null;
+    if ($local === null) {
+        $file = __DIR__ . '/local.php';
+        $loaded = is_file($file) ? require $file : [];
+        $local = is_array($loaded) ? $loaded : [];
+    }
+    return $local[$key] ?? $default;
+}
+
+function appConfigBool(string $key, bool $default = false): bool {
+    $value = appConfig($key);
+    if ($value === null) {
+        return $default;
+    }
+    return filter_var($value, FILTER_VALIDATE_BOOLEAN);
 }
 
 function redirect($url) {

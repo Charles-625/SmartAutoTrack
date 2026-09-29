@@ -29,8 +29,14 @@ intervention (idIntervention, idClient, idVehicule, idTechnicien, idGarage,
 reparation (idReparation, idIntervention, idTechnicien, titre, description,
             diagnostic, travauxEffectues, piecesUtilisees, recommandations,
             cout, dureeIntervention, dateReparation, statut)
-paiement, assistantia, analyseia, journalactivites   (non utilisées par le
-            site PHP actuel — prévues pour un périmètre futur)
+paiement   (idPaiement, idClient, idIntervention, montant, datePaiement,
+            typePaiement, statut EN_ATTENTE/PAYE/ECHOUE/ANNULE ; ajoutées par
+            scripts/migrate_structure.php pour CamPay : idReparation,
+            referenceExterne (unique), referenceCampay, telephone, operateur,
+            messageErreur)
+journalactivites (journal des actions, alimenté par includes/activity_log.php)
+assistantia, analyseia   (non utilisées : l'historique de l'assistant IA est
+            conservé en session)
 
 -- Tables reprises telles quelles de l'ancien schéma (pas d'équivalent neuf) :
 messages (id, expediteur_id, destinataire_id, sujet, contenu, lu, date_envoi)

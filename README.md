@@ -6,7 +6,8 @@ réparations et messagerie, avec quatre espaces selon le rôle de l'utilisateur 
 
 ## Prérequis
 
-- XAMPP (Apache + MySQL/MariaDB), PHP >= 7.4 avec les extensions `pdo_mysql` et `fileinfo`
+- XAMPP (Apache + MySQL/MariaDB), PHP >= 7.4 avec les extensions `pdo_mysql`, `fileinfo`
+  et `curl` (paiement CamPay et assistant IA)
 - Composer (uniquement pour lancer les tests)
 
 ## Installation (XAMPP)
@@ -46,6 +47,44 @@ réparations et messagerie, avec quatre espaces selon le rôle de l'utilisateur 
 - Les fichiers téléversés ne sont servis que par les scripts `ajax/download_*.php`,
   qui vérifient les droits.
 - `HCH_DEBUG=1` affiche les erreurs PHP (développement uniquement).
+
+## Configuration des services externes
+
+Chaque clé se lit d'abord dans une variable d'environnement du même nom, sinon dans
+`config/local.php`. Les clés et jetons ne doivent jamais être versionnés.
+
+### Paiement Mobile Money (CamPay)
+
+Un client peut payer en ligne (MTN Mobile Money ou Orange Money) une réparation terminée
+dont le coût est renseigné, depuis `client/reparations.php`. Il reçoit une demande de
+validation sur son téléphone ; la page suit le statut et affiche « Payée » une fois
+la transaction confirmée. Les paiements apparaissent dans `admin/transactions.php`.
+
+1. Renseigner `CAMPAY_BASE_URL` (`https://demo.campay.net` en test, `https://www.campay.net`
+   en production), `CAMPAY_TOKEN` (ou `CAMPAY_USERNAME` + `CAMPAY_PASSWORD`) et
+   `CAMPAY_WEBHOOK_KEY`, depuis le tableau de bord CamPay de l'application.
+2. Préparer la table `paiement` : `php scripts/migrate_structure.php --apply`.
+   Tant que ce n'est pas fait, le bouton de paiement reste masqué.
+3. Déclarer l'URL de notification dans le tableau de bord CamPay :
+   `https://<votre-domaine>/webhooks/campay.php`. Elle doit être joignable depuis Internet ;
+   en local, le suivi du statut par la page client suffit à confirmer les paiements.
+
+Le statut d'un paiement est toujours revérifié auprès de l'API CamPay (le webhook n'est
+qu'un signal, sa signature est contrôlée). `CAMPAY_SIMULATION=true` simule des paiements
+réussis sans appeler CamPay : réservé au développement.
+
+### Assistant IA (Hugging Face)
+
+Les pages `client/assistant.php` et `admin/assistant.php` proposent un assistant
+conversationnel qui s'appuie sur les données de l'utilisateur (véhicules, anomalies,
+interventions) ou, pour l'administrateur, sur les statistiques de la plateforme.
+
+- `HF_TOKEN` : jeton Hugging Face disposant de la permission
+  « Make calls to Inference Providers » (un jeton en lecture seule est refusé).
+- `HF_MODEL` : modèle utilisé, par défaut `Qwen/Qwen2.5-7B-Instruct:fastest`.
+
+Sans jeton, l'assistant s'affiche comme indisponible. Chaque utilisateur est limité
+à 20 messages par tranche de 10 minutes.
 
 ## Tests
 
