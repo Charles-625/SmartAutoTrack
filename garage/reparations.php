@@ -59,6 +59,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'new_rep
 
                 $conn->prepare("UPDATE intervention SET statut = 'TERMINEE' WHERE idIntervention = ? AND idGarage = ?")->execute([$interventionId, $garageId]);
 
+                // La réparation règle les anomalies constatées sur cette intervention
+                $conn->prepare("UPDATE anomalie SET statut = 'TRAITEE', dateResolution = NOW() WHERE idIntervention = ? AND statut IN ('NOUVELLE', 'EN_COURS')")->execute([$interventionId]);
+
                 garage_log($conn, $interventionId, 'Réparation renseignée et intervention clôturée', $titre, $iv['idTechnicien'], ['idReparation' => $reparationId, 'categorie' => 'reparation']);
 
                 $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'rapport', 'Rapport de réparation disponible', ?)")

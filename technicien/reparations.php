@@ -59,6 +59,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'new_rep
 
                 $conn->prepare("UPDATE intervention SET statut = 'TERMINEE' WHERE idIntervention = ? AND idTechnicien = ?")->execute([$interventionId, $selfId]);
 
+                // La réparation règle les anomalies constatées sur cette intervention
+                $conn->prepare("UPDATE anomalie SET statut = 'TRAITEE', dateResolution = NOW() WHERE idIntervention = ? AND statut IN ('NOUVELLE', 'EN_COURS')")->execute([$interventionId]);
+
                 technicien_log($conn, 'Réparation renseignée et intervention clôturée', [
                     'idIntervention' => $interventionId, 'idReparation' => $reparationId, 'description' => $titre, 'categorie' => 'reparation',
                 ]);
