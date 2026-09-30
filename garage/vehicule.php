@@ -4,6 +4,17 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace garage — Fiche d'un véhicule suivi par le garage.
+ *
+ * Accès : rôle « garage », et seulement pour un véhicule qui a au moins une
+ * intervention dans CE garage (sinon redirection vers interventions.php).
+ * Paramètre GET : id (idVehicule).
+ * Page en lecture seule : interventions, réparations et anomalies du
+ * véhicule, limitées à celles du garage.
+ * Tables lues : vehicule, utilisateur, intervention, reparation, anomalie.
+ */
+
 requireRole('garage');
 
 $db = new Database();
@@ -64,6 +75,7 @@ $stmt = $conn->prepare("
 $stmt->execute([$vehiculeId, $garageId]);
 $anomalies = $stmt->fetchAll();
 
+// Compteur du badge « Demandes d'intervention » de la sidebar.
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idGarage = ? AND idTechnicien IS NULL AND statut = 'PLANIFIEE'");
 $stmt->execute([$garageId]);
 $demandesEnAttente = (int)$stmt->fetchColumn();

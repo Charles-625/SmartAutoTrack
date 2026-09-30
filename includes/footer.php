@@ -1,4 +1,11 @@
-    <?php if (!empty($showNavbar)): ?>
+    <?php /**
+     * Pied de page commun, pendant de includes/header.php : referme <main>
+     * quand la barre de navigation historique est affichée, puis fournit les
+     * fenêtres modales/toasts et le script partagé (compteurs de notifications
+     * et de messages rafraîchis périodiquement via ajax/notifications.php et
+     * ajax/message_count.php, marquage comme lu, showToast(), showModal()).
+     * SITE_URL, USER_ROLE et USER_ID y sont exposés au JavaScript.
+     */if (!empty($showNavbar)): ?>
     </main>
     <?php endif; ?>
     

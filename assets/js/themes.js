@@ -1,18 +1,38 @@
 /**
  * Gestionnaire de thèmes pour SmartAutoTrack
+  *
+  * Chargé sur toutes les pages par includes/header.php, après main.js (dont
+  * il réutilise smartautotrackCsrfToken()). Le thème s'applique via l'attribut
+  * data-theme de <html>, lu par les feuilles de style.
+  *
+  * Priorité du thème au chargement : window.currentTheme (session PHP, posé
+  * par includes/header.php), puis localStorage, puis 'light'. Chaque
+  * changement choisi par l'utilisateur est aussi enregistré côté serveur via
+  * ajax/save_theme.php (base + session).
  */
 
+/**
+ * Applique, mémorise et fait circuler le thème courant. Instance unique
+ * exposée dans window.themeManager.
+ */
 class ThemeManager {
+    /** Lit le thème mémorisé puis l'applique immédiatement. */
     constructor() {
         this.currentTheme = this.getStoredTheme() || 'light';
         this.init();
     }
 
+    /** Applique le thème courant et branche les écouteurs d'événements. */
     init() {
         this.applyTheme(this.currentTheme);
         this.bindEvents();
     }
 
+    /**
+     * Thème mémorisé : la session PHP l'emporte sur le navigateur, pour qu'un
+     * utilisateur retrouve son choix sur un autre appareil.
+     * @returns {string|null} Identifiant du thème, ou null si aucun.
+     */
     getStoredTheme() {
         // Vérifier d'abord la session PHP
         if (window.currentTheme) {
@@ -23,10 +43,20 @@ class ThemeManager {
         return localStorage.getItem('smartautotrack_theme');
     }
 
+    /**
+     * Mémorise le thème dans le navigateur (clé smartautotrack_theme).
+     * @param {string} theme Identifiant du thème.
+     */
     storeTheme(theme) {
         localStorage.setItem('smartautotrack_theme', theme);
     }
 
+    /**
+     * Applique un thème sans l'envoyer au serveur : attribut data-theme,
+     * localStorage, courte animation de transition, indicateur, puis événement
+     * « themeChanged » pour les autres composants.
+     * @param {string} theme Identifiant du thème.
+     */
     applyTheme(theme) {
         document.documentElement.setAttribute('data-theme', theme);
         this.currentTheme = theme;
@@ -47,6 +77,10 @@ class ThemeManager {
         }));
     }
 
+    /**
+     * Crée la pastille flottante .theme-indicator (un clic passe au thème
+     * suivant). N'est appelée nulle part par défaut.
+     */
     createThemeIndicator() {
         // Supprimer l'ancien indicateur s'il existe
         const existingIndicator = document.querySelector('.theme-indicator');
@@ -67,6 +101,7 @@ class ThemeManager {
         });
     }
 
+    /** Met à jour l'icône et l'infobulle de la pastille, si elle existe. */
     updateThemeIndicator() {
         const indicator = document.querySelector('.theme-indicator');
         if (indicator) {
@@ -75,6 +110,10 @@ class ThemeManager {
         }
     }
 
+    /**
+     * @param {string} theme Identifiant du thème.
+     * @returns {string} Emoji représentant le thème.
+     */
     getThemeIcon(theme) {
         const icons = {
             'light': '☀️',
@@ -87,6 +126,10 @@ class ThemeManager {
         return icons[theme] || '🎨';
     }
 
+    /**
+     * @param {string} theme Identifiant du thème.
+     * @returns {string} Nom du thème en français.
+     */
     getThemeName(theme) {
         const names = {
             'light': 'Clair',
@@ -99,6 +142,7 @@ class ThemeManager {
         return names[theme] || 'Inconnu';
     }
 
+    /** Passe au thème suivant de la liste (en boucle) et l'enregistre sur le serveur. */
     cycleTheme() {
         const themes = ['light', 'dark', 'blue', 'green', 'purple', 'orange'];
         const currentIndex = themes.indexOf(this.currentTheme);
@@ -109,6 +153,11 @@ class ThemeManager {
         this.saveThemeToServer(themes[nextIndex]);
     }
 
+    /**
+     * Écoute les trois sources de changement : boutons radio name="theme" des
+     * pages de paramètres, raccourci Ctrl+T, et événement « themeChange » émis
+     * par d'autres scripts (celui-ci n'est pas renvoyé au serveur).
+     */
     bindEvents() {
         // Écouter les changements de thème depuis les formulaires
         document.addEventListener('change', (e) => {
@@ -132,6 +181,12 @@ class ThemeManager {
         });
     }
 
+    /**
+     * Enregistre le thème pour l'utilisateur connecté (ajax/save_theme.php,
+     * protégé par le jeton CSRF). Un échec est seulement journalisé dans la
+     * console : le thème reste appliqué localement.
+     * @param {string} theme Identifiant du thème.
+     */
     saveThemeToServer(theme) {
         // Envoyer le thème au serveur via AJAX
         fetch((typeof SITE_URL !== 'undefined' ? SITE_URL : '') + 'ajax/save_theme.php', {
@@ -152,6 +207,7 @@ class ThemeManager {
     }
 
     // Méthode pour définir un thème spécifique
+    // Seuls les six thèmes connus sont acceptés ; toute autre valeur est ignorée.
     setTheme(theme) {
         if (['light', 'dark', 'blue', 'green', 'purple', 'orange'].includes(theme)) {
             this.applyTheme(theme);
@@ -171,18 +227,26 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Fonctions utilitaires globales
+/**
+ * Raccourci global : applique et enregistre un thème.
+ * @param {string} theme Identifiant du thème.
+ */
 function changeTheme(theme) {
     if (window.themeManager) {
         window.themeManager.setTheme(theme);
     }
 }
 
+/** Raccourci global : passe au thème suivant. */
 function cycleTheme() {
     if (window.themeManager) {
         window.themeManager.cycleTheme();
     }
 }
 
+/**
+ * @returns {string} Thème courant ('light' tant que le gestionnaire n'est pas prêt).
+ */
 function getCurrentTheme() {
     return window.themeManager ? window.themeManager.getCurrentTheme() : 'light';
 }
@@ -196,6 +260,9 @@ function animateThemeChange() {
 }
 
 // Détecter les préférences système
+/**
+ * @returns {string} 'dark' si le système préfère le mode sombre, sinon 'light'.
+ */
 function detectSystemTheme() {
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
         return 'dark';
@@ -204,6 +271,12 @@ function detectSystemTheme() {
 }
 
 // Appliquer le thème système si aucun thème n'est défini
+/**
+ * Suit la préférence du système uniquement si aucun thème n'a été choisi
+ * (ni en session, ni dans le navigateur). En pratique includes/header.php
+ * pose toujours window.currentTheme ('light' par défaut) : ce repli ne joue
+ * que sur une page qui n'utilise pas cet en-tête.
+ */
 function applySystemTheme() {
     if (!localStorage.getItem('smartautotrack_theme') && !window.currentTheme) {
         const systemTheme = detectSystemTheme();

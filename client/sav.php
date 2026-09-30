@@ -3,15 +3,27 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 
+/**
+ * Page SAV (service après-vente) de l'espace client.
+ *
+ * Accès : rôle client uniquement.
+ * Page d'aide en lecture seule : questions fréquentes et lien direct vers la
+ * messagerie (messages/index.php) avec un administrateur. Aucune action POST.
+ * Tables lues : intervention (badge sidebar), utilisateur et administrateur
+ * (contact SAV).
+ */
 requireRole('client');
 
 $db = new Database();
 $conn = $db->getConnection();
 
+// Profil du client connecté : le type (PARTICULIER/ENTREPRISE) règle les
+// libellés et la variante de la sidebar.
 $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $clientRoleLabel = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE') ? 'Client entreprise' : 'Client particulier';
 $isEntreprise = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
 
+// Badge de la sidebar : interventions actives (planifiées ou en cours) du client.
 $stmtBadge = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idClient = ? AND statut IN ('PLANIFIEE', 'EN_COURS')");
 $stmtBadge->execute([$_SESSION['user_id']]);
 $interventionsActivesCount = (int)$stmtBadge->fetchColumn();

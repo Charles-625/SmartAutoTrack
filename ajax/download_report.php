@@ -2,6 +2,17 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 
+/**
+ * Téléchargement du rapport d'une réparation, sous forme de fichier HTML
+ * autonome (imprimable). Appelé depuis client/dashboard.php et
+ * client/reparations.php.
+ *
+ * Accès : tout utilisateur connecté, mais cloisonné par rôle : le client
+ * pour ses véhicules, le technicien pour ses réparations, le garage pour
+ * ses interventions, l'admin pour tout.
+ * GET : id (identifiant de la réparation).
+ * Tables lues : reparation, intervention, vehicule, utilisateur, garage.
+ */
 requireAuth();
 
 $reparation_id = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
@@ -123,6 +134,13 @@ function eMultiline($value) {
     return nl2br(e($value));
 }
 
+/**
+ * Construit le document HTML complet du rapport de réparation.
+ * Toutes les valeurs issues de la base passent par e() / eMultiline().
+ *
+ * @param array $reparation Ligne issue de la requête ci-dessus (colonnes aliasées).
+ * @return string Page HTML autonome (styles inline, aucun script).
+ */
 function generateReportHTML($reparation) {
     $html = '<!DOCTYPE html>
 <html lang="fr">
@@ -215,6 +233,7 @@ function generateReportHTML($reparation) {
     $html .= '</div>
     </div>';
 
+    // Sections facultatives : affichées seulement si le champ est renseigné.
     $blocks = [
         'diagnostic'        => 'Diagnostic',
         'travaux_effectues' => 'Travaux Effectués',

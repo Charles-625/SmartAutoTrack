@@ -4,6 +4,22 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Liste et supervision de toutes les interventions (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * Actions POST (jeton CSRF requis), passées par ?action=… :
+ *   - assign_garage : affecte/réaffecte une demande à un garage validé ;
+ *   - new : crée une intervention assignée directement à un technicien ;
+ *   - update_status (?id=N) : change le statut de l'intervention.
+ * Filtres GET : `status`, `technicien`, `garage` (id ou « none » pour les
+ * demandes non affectées), `date`.
+ *
+ * Tables : intervention (lecture/écriture), vehicule, utilisateur,
+ * technicien, garage, notifications, journal d'activité.
+ * Liens : intervention_detail.php, admin/includes/helpers.php
+ * (admin_reassign_garage), client/interventions.php.
+ */
 requireRole('admin');
 
 $db = new Database();
@@ -61,6 +77,8 @@ if ($action === 'new' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($errors)) {
         try {
+            // Le client de l'intervention est déduit du véhicule choisi, jamais du
+            // formulaire.
             $stmt = $conn->prepare("SELECT idClient FROM vehicule WHERE idVehicule = ?");
             $stmt->execute([$vehicle_id]);
             $vehicle = $stmt->fetch();
@@ -83,6 +101,7 @@ if ($action === 'new' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     'categorie' => 'intervention',
                 ]);
 
+                // Deux notifications : le technicien assigné et le propriétaire du véhicule.
                 $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'intervention', 'Nouvelle intervention assignée', ?)")
                     ->execute([$technicien_id, 'Vous avez été assigné à une nouvelle intervention : ' . $type_intervention]);
                 $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'intervention', 'Intervention planifiée', ?)")
@@ -100,6 +119,7 @@ if ($action === 'new' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 // Modifier le statut d'une intervention
 if ($action === 'update_status' && $intervention_id && $_SERVER['REQUEST_METHOD'] === 'POST' && verifyCSRFToken($_POST['csrf_token'] ?? '')) {
     $new_status = $_POST['status'] ?? '';
+    // Liste blanche des statuts acceptés : toute autre valeur est ignorée.
     $statusToDb = ['planifiee' => 'PLANIFIEE', 'en_cours' => 'EN_COURS', 'terminee' => 'TERMINEE', 'annulee' => 'ANNULEE'];
     if (isset($statusToDb[$new_status])) {
         try {
@@ -130,6 +150,8 @@ $where = ['1=1'];
 $params = [];
 if ($status_filter && isset($statusToDbFilter[$status_filter])) { $where[] = 'i.statut = ?'; $params[] = $statusToDbFilter[$status_filter]; }
 if ($technicien_filter) { $where[] = 'i.idTechnicien = ?'; $params[] = $technicien_filter; }
+// « none » = demandes jamais affectées ou refusées par un garage (même
+// définition que le compteur non_affectees et que le tableau de bord).
 if ($garage_filter_raw === 'none') { $where[] = 'i.idTechnicien IS NULL AND (i.idGarage IS NULL OR i.statut = \'ANNULEE\')'; }
 elseif ($garage_filter) { $where[] = 'i.idGarage = ?'; $params[] = $garage_filter; }
 if ($date_filter) { $where[] = 'DATE(i.dateIntervention) = ?'; $params[] = $date_filter; }
@@ -177,6 +199,8 @@ $stats = $conn->query("
 
 $statutLabels = ['PLANIFIEE' => 'Planifiée', 'EN_COURS' => 'En cours', 'TERMINEE' => 'Terminée', 'ANNULEE' => 'Annulée'];
 $statutBadge = ['PLANIFIEE' => 'info', 'EN_COURS' => 'warn', 'TERMINEE' => 'ok', 'ANNULEE' => 'bad'];
+// Transitions de statut proposées dans la liste selon le statut actuel
+// (aucune pour TERMINEE, qui est un état final).
 $nextStatus = ['PLANIFIEE' => ['en_cours' => 'En cours', 'annulee' => 'Annulée'], 'EN_COURS' => ['terminee' => 'Terminée', 'annulee' => 'Annulée'], 'ANNULEE' => ['planifiee' => 'Planifiée']];
 
 $pageTitle = 'Interventions';
@@ -361,8 +385,8 @@ include '../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="av2-form-group"><label>Type d'intervention</label><input type="text" name="type_intervention" required placeholder="Ex. : Diagnostic, Entretien..."></div>
-            <div class="av2-form-group"><label>Description</label><textarea name="description"></textarea></div>
+            <div class="av2-form-group"><label>Type d'intervention</label><input type="text" name="type_intervention" required placeholder="Ex. Diagnostic, entretien…"></div>
+            <div class="av2-form-group"><label>Description</label><textarea name="description" placeholder="Ex. Bruit métallique au freinage à l'avant…"></textarea></div>
             <div class="av2-form-group"><label>Date planifiée</label><input type="datetime-local" name="date_planifiee" required></div>
             <div class="av2-modal-actions">
                 <button type="button" class="av2-btn-outline" id="closeNewIntervention">Annuler</button>

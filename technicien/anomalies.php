@@ -4,6 +4,18 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace technicien — Mes anomalies.
+ *
+ * Accès : rôle « technicien ».
+ * Actions :
+ *   - POST form=new_anomalie : constater une anomalie sur une de MES
+ *     interventions EN_COURS ou TERMINEE (statut initial NOUVELLE) et la journaliser.
+ *   - GET action=new&intervention_id=… : ouvre directement le formulaire.
+ * Tables : anomalie (écriture), intervention, vehicule (lecture),
+ *          journalactivites (via technicien_log()).
+ */
+
 requireRole('technicien');
 
 $db = new Database();
@@ -33,6 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'new_ano
         if (empty($description)) $formErrors[] = 'Merci de décrire l\'anomalie constatée.';
 
         if (empty($formErrors)) {
+            // Contrôle de propriété : l'intervention doit m'être assignée.
             $stmt = $conn->prepare("SELECT idVehicule FROM intervention WHERE idIntervention = ? AND idTechnicien = ?");
             $stmt->execute([$interventionId, $selfId]);
             $iv = $stmt->fetch();
@@ -79,6 +92,7 @@ $stmt = $conn->prepare("
 $stmt->execute([$selfId]);
 $anomalies = $stmt->fetchAll();
 
+// Compteur du badge « Mes tâches » de la sidebar (tâches à démarrer).
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idTechnicien = ? AND statut = 'PLANIFIEE'");
 $stmt->execute([$selfId]);
 $tachesADemarrer = (int)$stmt->fetchColumn();
@@ -158,8 +172,8 @@ include '../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="tv2-form-group"><label for="anType">Type</label><input type="text" name="type" id="anType" placeholder="Ex. : Freinage, Moteur, Électronique..."></div>
-            <div class="tv2-form-group"><label for="anDescription">Description</label><textarea name="description" id="anDescription" required placeholder="Décrivez l'anomalie constatée..."></textarea></div>
+            <div class="tv2-form-group"><label for="anType">Type</label><input type="text" name="type" id="anType" placeholder="Ex. Freinage"></div>
+            <div class="tv2-form-group"><label for="anDescription">Description</label><textarea name="description" id="anDescription" required placeholder="Ex. Bruit métallique au freinage à l'avant…"></textarea></div>
             <div class="tv2-form-group">
                 <label for="anNiveau">Niveau</label>
                 <select name="niveau" id="anNiveau">

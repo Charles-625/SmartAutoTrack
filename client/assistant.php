@@ -4,20 +4,34 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once '../includes/ai.php';
 
+/**
+ * Assistant IA de l'espace client.
+ *
+ * Accès : rôle client uniquement.
+ * La page n'affiche que l'interface de conversation : les questions partent en
+ * AJAX depuis assets/js/assistant.js ; la logique IA est dans includes/ai.php.
+ * Aucune action POST ici. Sans clé d'IA configurée (aiIsConfigured()), la
+ * page le signale au lieu de proposer la saisie.
+ * Tables lues : intervention (badge sidebar).
+ */
 requireRole('client');
 
 $db = new Database();
 $conn = $db->getConnection();
 
+// Profil du client connecté : le type (PARTICULIER/ENTREPRISE) règle les
+// libellés et la variante de la sidebar.
 $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $clientRoleLabel = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE') ? 'Client entreprise' : 'Client particulier';
 $isEntreprise = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
 
+// Badge de la sidebar : interventions actives (planifiées ou en cours) du client.
 $stmtBadge = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idClient = ? AND statut IN ('PLANIFIEE', 'EN_COURS')");
 $stmtBadge->execute([$_SESSION['user_id']]);
 $interventionsActivesCount = (int)$stmtBadge->fetchColumn();
 
 $aiEnabled = aiIsConfigured();
+// Questions proposées en un clic pour amorcer la conversation.
 $suggestions = [
     'Quand dois-je faire vidanger mon véhicule ?',
     'Comment suivre ma demande d\'intervention ?',

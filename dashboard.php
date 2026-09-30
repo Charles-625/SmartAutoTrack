@@ -1,6 +1,14 @@
 <?php
 require_once 'config/config.php';
 
+/**
+ * Aiguillage vers le tableau de bord du rôle connecté (admin/, technicien/,
+ * client/, garage/). Le rôle vient de la session, posée à la connexion à
+ * partir de la base — jamais d'un paramètre de la requête.
+ *
+ * Accès : tout utilisateur connecté (sinon renvoi vers la connexion).
+ */
+
 requireAuth();
 
 // Redirection selon le rôle

@@ -1,6 +1,17 @@
 <?php
 require __DIR__ . '/config.php';
 
+/**
+ * Simulateur OBD-II de l'API REST HÉRITÉE, sur l'ancienne base
+ * `smartautotrack` (tables anomalies, vehicles, users, push_tokens) — pas sur
+ * la base `charles` du site actuel.
+ *
+ * Route unique : POST obd/sim (rôle admin ou technicien). Les mesures non
+ * fournies sont tirées au hasard ; chaque seuil franchi (batterie < 30 %,
+ * freins < 25 %, moteur > 110 °C) crée une anomalie "nouvelle" et envoie une
+ * notification push au client propriétaire et aux administrateurs.
+ */
+
 // Simulateur OBD-II simple: génère aléatoirement une anomalie pour un véhicule donné
 // Usage: POST /api/obd/sim { vehicle_id, metrics: { battery: %, brakes: %, engine_temp: C } }
 
@@ -20,6 +31,7 @@ if ($path === 'obd/sim' && $method === 'POST') {
   $brakes = isset($metrics['brakes']) ? (int)$metrics['brakes'] : rand(10, 100);
   $engine = isset($metrics['engine_temp']) ? (int)$metrics['engine_temp'] : rand(70, 120);
 
+  // Seuils de détection : une anomalie par mesure hors plage.
   if ($battery < 30) $anoms[] = ['type'=>'batterie','description'=>'Tension batterie faible'];
   if ($brakes < 25) $anoms[] = ['type'=>'freins','description'=>'Usure plaquettes élevée'];
   if ($engine > 110) $anoms[] = ['type'=>'moteur','description'=>'Surchauffe moteur possible'];
@@ -47,6 +59,7 @@ if ($path === 'obd/sim' && $method === 'POST') {
       if (!empty($tokens)) {
         fcm_send($tokens, 'Anomalie détectée', $a['type'] . ' - ' . $a['description'], [ 'vehicle_id'=>$vehicleId ]);
       }
+    // Échec de notification ignoré : l'anomalie est déjà enregistrée.
     } catch (Exception $ex) { /* noop */ }
   }
 

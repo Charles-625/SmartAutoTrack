@@ -4,6 +4,23 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace garage — Demandes d'intervention reçues des clients.
+ *
+ * Accès : rôle « garage ».
+ * Une « nouvelle demande » est une intervention PLANIFIEE sans technicien
+ * (libellé calculé, cf. garage_status_info()).
+ * Actions :
+ *   - POST form=assign : accepter la demande, l'affecter à un technicien
+ *     validé du garage, fixer la date prévue et la priorité ; notifie le
+ *     technicien et le client.
+ *   - POST form=refuse : refuser une demande encore non affectée (statut
+ *     ANNULEE) ; le client est notifié.
+ *   - GET statut=nouvelle|planifiee|en_cours|terminee|refusee|toutes : filtre.
+ * Tables : intervention (écriture), technicien, vehicule, utilisateur (lecture),
+ *          notifications (écriture), journalactivites (via garage_log()).
+ */
+
 requireRole('garage');
 
 $db = new Database();
@@ -63,12 +80,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'assign'
             if (!$iv) {
                 $formErrors[] = 'Cette demande ne peut plus être affectée (déjà traitée ou hors de votre garage).';
             } else {
+                // Le formulaire ne saisit qu'un jour : l'heure prévue est fixée à 8 h.
                 $stmt = $conn->prepare("UPDATE intervention SET idTechnicien = ?, dateIntervention = ?, priorite = ? WHERE idIntervention = ? AND idGarage = ?");
                 $stmt->execute([$technicienId, $dateObj->format('Y-m-d') . ' 08:00:00', $priorite, $interventionId, $garageId]);
 
                 garage_log($conn, $interventionId, 'Demande acceptée et planifiée', 'Le garage a affecté cette intervention à un technicien.', null);
                 garage_log($conn, $interventionId, 'Intervention assignée à un technicien', null, $technicienId);
 
+                // Notifications : le technicien affecté et le client.
                 $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'intervention', 'Nouvelle intervention assignée', ?)")
                     ->execute([$technicienId, 'Vous avez été assigné à une intervention : ' . $iv['type']]);
                 $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'intervention', 'Intervention planifiée', ?)")
@@ -136,6 +155,7 @@ $stmt = $conn->prepare("
 $stmt->execute($params);
 $demandes = $stmt->fetchAll();
 
+// Compteur du badge « Demandes d'intervention » de la sidebar.
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idGarage = ? AND idTechnicien IS NULL AND statut = 'PLANIFIEE'");
 $stmt->execute([$garageId]);
 $demandesEnAttente = (int)$stmt->fetchColumn();

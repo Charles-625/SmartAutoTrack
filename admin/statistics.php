@@ -2,6 +2,18 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 
+/**
+ * Statistiques globales de la plateforme (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * Lecture seule. Calcule les totaux (utilisateurs, véhicules, anomalies,
+ * interventions, réparations), les évolutions sur 12 mois, le top 5 des
+ * techniciens et les anomalies par type ; les graphiques sont dessinés
+ * côté navigateur à partir de ces données.
+ *
+ * Tables lues : utilisateur, client, technicien, administrateur, vehicule,
+ * anomalie, intervention, reparation.
+ */
 requireRole('admin');
 
 $db = new Database();
@@ -9,6 +21,9 @@ $conn = $db->getConnection();
 
 // Période de filtrage
 $period = $_GET['period'] ?? '30'; // 7, 30, 90, 365 jours
+// Remarque : $start_date et $end_date ne sont utilisés par aucune requête
+// ci-dessous ; le paramètre `period` ne sert qu'à présélectionner la liste
+// déroulante (les évolutions portent toujours sur 12 mois).
 $start_date = date('Y-m-d', strtotime("-$period days"));
 $end_date = date('Y-m-d');
 
@@ -94,7 +109,7 @@ $stmt = $conn->query("
 ");
 $top_techniciens = $stmt->fetchAll();
 
-// Anomalies par type
+// Anomalies par type (sévérité moyenne : 1 = FAIBLE, 2 = MOYEN, 3 = CRITIQUE)
 $stmt = $conn->query("
     SELECT
         COALESCE(type, 'Non renseigné') AS type,

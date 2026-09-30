@@ -5,6 +5,9 @@
  * Les identifiants ne sont plus écrits dans le code. Ordre de résolution :
  *   1. variables d'environnement HCH_DB_HOST / HCH_DB_NAME / HCH_DB_USER / HCH_DB_PASS
  *   2. fichier config/local.php (non versionné, voir config/local.example.php)
+ *   3. valeurs par défaut XAMPP (localhost, base Charles, root sans mot de passe)
+ *
+ * Utilisation : $conn = (new Database())->getConnection();
  */
 
 class Database {
@@ -14,6 +17,11 @@ class Database {
     private $password;
     private $conn;
 
+    /**
+     * Résout les paramètres de connexion (environnement > local.php > défauts).
+     * HCH_DB_PASS peut valoir une chaîne vide : on teste donc `!== false`
+     * plutôt que `?:` pour qu'un mot de passe vide explicite soit respecté.
+     */
     public function __construct() {
         $local = [];
         $localFile = __DIR__ . '/local.php';
@@ -31,6 +39,16 @@ class Database {
         $this->password = ($pass !== false) ? $pass : ($local['db_pass'] ?? '');
     }
 
+    /**
+     * Ouvre une connexion PDO (utf8mb4, exceptions, fetch associatif, vraies
+     * requêtes préparées).
+     *
+     * En cas d'échec sur le web, répond 503 et arrête le script sans révéler le
+     * détail ; en CLI (scripts/, tests), renvoie null pour laisser l'appelant
+     * décider.
+     *
+     * @return PDO|null
+     */
     public function getConnection() {
         $this->conn = null;
 

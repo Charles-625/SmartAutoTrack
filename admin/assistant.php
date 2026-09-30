@@ -5,9 +5,22 @@ require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 require_once '../includes/ai.php';
 
+/**
+ * Assistant IA de supervision (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * La page ne traite aucun POST : elle affiche le chat et les questions
+ * suggérées, puis assets/js/assistant.js envoie les messages en AJAX
+ * (historique initial injecté via aiHistory(ROLE_ADMIN)).
+ *
+ * Si l'IA n'est pas configurée (HF_TOKEN absent de config/local.php), la page
+ * affiche seulement une consigne de configuration.
+ * Liens : includes/ai.php, assets/js/assistant.js, assets/css/assistant.css.
+ */
 requireRole('admin');
 
 $aiEnabled = aiIsConfigured();
+// Questions proposées en un clic sous le chat.
 $suggestions = [
     'Quels garages ont le plus d\'anomalies critiques ce mois-ci ?',
     'Quels techniciens sont les plus chargés en ce moment ?',
@@ -54,7 +67,7 @@ include '../includes/header.php';
 
                 <form class="av2-ai-input" id="aiChatForm" autocomplete="off">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2L14 9L21 11L14 13L12 20L10 13L3 11L10 9Z" stroke="rgba(255,255,255,0.6)" stroke-width="1.5" stroke-linejoin="round"/></svg>
-                    <input type="text" id="aiChatInput" placeholder="Ex. : Quels garages ont le plus d'anomalies critiques ce mois-ci ?" maxlength="<?php echo AI_MAX_MESSAGE_LENGTH; ?>" aria-label="Votre question">
+                    <input type="text" id="aiChatInput" placeholder="Ex. Quels garages ont le plus d'anomalies critiques ce mois-ci ?" maxlength="<?php echo AI_MAX_MESSAGE_LENGTH; ?>" aria-label="Votre question">
                     <button type="submit" aria-label="Envoyer" title="Envoyer">
                         <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M3 12L21 3L14 21L11 13L3 12Z" stroke="#FFFFFF" stroke-width="1.6" stroke-linejoin="round"/></svg>
                     </button>

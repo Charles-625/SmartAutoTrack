@@ -2,6 +2,15 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 
+/**
+ * Endpoint AJAX (JSON) : données d'un véhicule, par exemple pour préremplir
+ * le formulaire de modification de client/vehicles.php.
+ *
+ * Accès : tout utilisateur connecté, avec un filtre propre à chaque rôle
+ * (client, technicien, garage, admin) ; tout autre rôle est refusé.
+ * GET : id (identifiant du véhicule).
+ * Tables lues : vehicule, intervention, garage.
+ */
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {

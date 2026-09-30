@@ -4,11 +4,26 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Tableau de bord de l'Administrateur (page d'accueil de l'espace admin).
+ *
+ * Accès : rôle admin uniquement.
+ * Lecture seule : aucune action POST. Affiche les compteurs globaux, la
+ * répartition des interventions (donut), la tendance sur 7 jours, les
+ * garages à valider, les demandes non affectées, la charge des garages et
+ * les dernières activités du journal.
+ *
+ * Tables lues : client, garage, technicien, vehicule, intervention,
+ * anomalie, reparation, utilisateur, journal d'activité (activity_log_fetch).
+ * Liens : admin/includes/helpers.php (av2_donut_svg, av2_trend_svg).
+ */
 requireRole('admin');
 
 $db = new Database();
 $conn = $db->getConnection();
 
+// Heure du serveur MySQL, utilisée pour les dates relatives (évite un
+// décalage avec l'horloge PHP).
 $dbNow = $conn->query('SELECT NOW()')->fetchColumn();
 
 // ============================================================
@@ -64,6 +79,8 @@ $stmt = $conn->query("
     GROUP BY DATE(dateIntervention)
 ");
 $trendRows = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+// Les jours sans intervention sont absents du GROUP BY : on complète à 0
+// pour toujours avoir 7 points sur la courbe.
 $trendValues = [];
 $trendLabels = [];
 for ($i = 6; $i >= 0; $i--) {
@@ -115,6 +132,8 @@ $stmt = $conn->query("
     LIMIT 6
 ");
 $garageCharge = $stmt->fetchAll();
+// max(1, ...) évite une division par zéro dans le calcul des barres de
+// charge quand aucun garage n'a d'intervention active.
 $maxCharge = max(1, ...array_map(fn($g) => (int)$g['actives'], $garageCharge ?: [['actives' => 0]]));
 
 // Activités récentes (vision globale, sans restriction pour l'admin)

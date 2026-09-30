@@ -4,6 +4,19 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace technicien — Tableau de bord.
+ *
+ * Accès : rôle « technicien ». Un compte encore en attente de validation
+ * voit seulement un message d'attente.
+ * Page en lecture seule : cartes statistiques, donut de mes interventions
+ * par statut, tendance sur 7 jours, tâches à traiter, aperçu du journal et
+ * messages non lus. Toutes les requêtes sont bornées à idTechnicien = moi.
+ * Tables lues : intervention, reparation, anomalie, vehicule, messages,
+ *               journalactivites (via activity_log_fetch()).
+ * Liés : technicien/includes/helpers.php (tv2_donut_svg, tv2_trend_svg, tv2_phrase).
+ */
+
 requireRole('technicien');
 
 // Compte en attente de validation : accès bloqué avant validation admin
@@ -25,6 +38,7 @@ $db = new Database();
 $conn = $db->getConnection();
 $selfId = (int)$_SESSION['user_id'];
 
+// Heure MySQL : les durées relatives (v2_relative) sont calculées sur la même horloge que les dates stockées.
 $dbNow = $conn->query('SELECT NOW()')->fetchColumn();
 
 // ============================================================
@@ -84,6 +98,7 @@ $stmt->execute([$selfId]);
 $trendRows = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 $trendValues = [];
 $trendLabels = [];
+// 7 points exactement : un jour sans intervention vaut 0.
 for ($i = 6; $i >= 0; $i--) {
     $day = date('Y-m-d', strtotime("-$i day"));
     $trendValues[] = (int)($trendRows[$day] ?? 0);

@@ -3,6 +3,15 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 
+/**
+ * Endpoint AJAX (JSON) : envoie un message interne à un autre utilisateur
+ * et crée la notification correspondante. Appelé depuis messages/index.php.
+ *
+ * Accès : tout utilisateur connecté, POST avec jeton CSRF.
+ * POST : destinataire_id, sujet, contenu. Le destinataire doit avoir un
+ * compte utilisable et un rôle différent de celui de l'expéditeur.
+ * Tables : utilisateur (lecture), messages et notifications (écriture).
+ */
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {

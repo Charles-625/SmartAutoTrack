@@ -13,9 +13,11 @@
  */
 $activeNav = $activeNav ?? 'dashboard';
 $garagesEnAttenteBadge = $garagesEnAttenteBadge ?? 0;
+// Initiales de l'avatar (prénom + nom), « ? » si la session n'en fournit pas.
 $prenomInitial = mb_substr((string)($_SESSION['prenom'] ?? ''), 0, 1);
 $nomInitial = mb_substr((string)($_SESSION['nom'] ?? ''), 0, 1);
 $initials = mb_strtoupper($prenomInitial . $nomInitial) ?: '?';
+// Renvoie la classe « active » pour l'entrée de menu de la page courante.
 $navActive = function (string $key) use ($activeNav) { return $activeNav === $key ? 'active' : ''; };
 ?>
 <aside class="av2-sidebar">

@@ -28,6 +28,14 @@
 require __DIR__ . '/../config/database.php';
 $conn = (new Database())->getConnection();
 
+/**
+ * Indique si une colonne existe déjà (chaque étape n'est appliquée qu'une fois).
+ *
+ * @param PDO    $conn   Connexion à la base.
+ * @param string $table  Table concernée.
+ * @param string $column Colonne recherchée.
+ * @return bool true si la colonne existe.
+ */
 function columnExists(PDO $conn, string $table, string $column): bool {
     // Noms de table/colonne toujours fournis par le code (jamais une entrée
     // utilisateur) : interpolation directe sûre, cohérente avec les autres

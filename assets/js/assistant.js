@@ -1,6 +1,10 @@
 /**
  * Assistant IA : conversation avec ajax/assistant_chat.php.
  * L'historique initial est fourni par la page dans window.AI_HISTORY.
+ *
+ * Chargé uniquement par admin/assistant.php et client/assistant.php
+ * (conteneur #aiChat) ; ne fait rien ailleurs. Dépend de jQuery ($.ajax,
+ * qui ajoute le jeton CSRF via main.js) et de la constante globale SITE_URL.
  */
 (function () {
     const root = document.getElementById('aiChat');
@@ -11,10 +15,23 @@
     const input = document.getElementById('aiChatInput');
     const endpoint = () => SITE_URL + 'ajax/assistant_chat.php';
 
+    /**
+     * Échappe les caractères HTML spéciaux.
+     * @param {string} text Texte brut.
+     * @returns {string} Texte sûr à insérer via innerHTML.
+     */
     function escapeHtml(text) {
         return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
+    /**
+     * Écrit le texte d'un message. En mode formaté (réponses de l'IA), le
+     * texte est d'abord échappé, puis seuls **gras** et les titres Markdown
+     * sont convertis en <strong> : aucun HTML venant du modèle n'est exécuté.
+     * @param {HTMLElement} el Bulle de message.
+     * @param {string} text Contenu.
+     * @param {boolean} formatted true pour appliquer la mise en forme minimale.
+     */
     function setText(el, text, formatted) {
         if (!formatted) {
             el.textContent = text;
@@ -25,6 +42,12 @@
             .replace(/^#{1,4}\s*(.+)$/gm, '<strong>$1</strong>');
     }
 
+    /**
+     * Ajoute une bulle au fil de discussion et fait défiler jusqu'en bas.
+     * @param {string} kind 'user', 'assistant' ou 'error' (classe CSS ai-msg-*).
+     * @param {string} text Contenu du message.
+     * @returns {HTMLDivElement} La bulle créée (réutilisée pour la réponse en attente).
+     */
     function addMessage(kind, text) {
         const div = document.createElement('div');
         div.className = 'ai-msg ai-msg-' + kind;
@@ -37,6 +60,12 @@
 
     (window.AI_HISTORY || []).forEach(m => addMessage(m.role === 'user' ? 'user' : 'assistant', m.content));
 
+    /**
+     * Envoie une question au serveur. Une seule requête à la fois (classe
+     * is-busy) ; une bulle « réfléchit… » est remplacée par la réponse ou
+     * par le message d'erreur renvoyé par le serveur.
+     * @param {string} text Question saisie ou suggérée.
+     */
     function send(text) {
         if (!text || root.classList.contains('is-busy')) return;
         addMessage('user', text);
@@ -75,6 +104,8 @@
         button.addEventListener('click', function () { send(button.dataset.question); });
     });
 
+    // Nouvelle conversation : efface l'historique côté serveur, puis l'affichage
+    // (même si la requête échoue, d'où always()).
     const reset = document.getElementById('aiChatReset');
     if (reset) {
         reset.addEventListener('click', function () {

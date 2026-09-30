@@ -4,6 +4,16 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Journal d'activité global de la plateforme (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * Lecture seule. Filtres GET : `categorie`, `garage`, `role_acteur`,
+ * `date_from`, `date_to` ; au plus 300 entrées affichées.
+ *
+ * Tables lues : journal d'activité (via activity_log_fetch), garage.
+ * Liens : includes/activity_log.php.
+ */
 requireRole('admin');
 
 $db = new Database();

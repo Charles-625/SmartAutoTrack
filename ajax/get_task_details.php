@@ -2,6 +2,15 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 
+/**
+ * Endpoint AJAX (JSON) : détail d'une tâche du technicien (une intervention
+ * qui lui est assignée), avec le client, le véhicule et, si la tâche est
+ * terminée, le dernier rapport de réparation associé.
+ *
+ * Accès : technicien uniquement, et seulement pour ses propres interventions.
+ * GET : id (identifiant de l'intervention).
+ * Tables lues : intervention, vehicule, utilisateur, reparation.
+ */
 header('Content-Type: application/json');
 
 requireJsonAuth('technicien');

@@ -4,6 +4,19 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Fiche détaillée d'une intervention (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * GET `id` : identifiant de l'intervention ; si absent ou inconnu,
+ * redirection vers interventions.php.
+ * Action POST `action=reassign_garage` (jeton CSRF requis) : réaffecte la
+ * demande à un autre garage validé via admin_reassign_garage().
+ *
+ * Tables lues : intervention, vehicule, utilisateur (client, technicien),
+ * garage, journal d'activité (historique complet de l'intervention).
+ * Liens : admin/includes/helpers.php, interventions.php.
+ */
 requireRole('admin');
 
 $db = new Database();
@@ -61,6 +74,8 @@ if (!$iv) { header('Location: interventions.php'); exit; }
 // réaffectation admin : le journal d'activité suffit (cf. section 10 du cadrage).
 $journal = activity_log_fetch($conn, 'admin', (int)$_SESSION['user_id'], [], ['idIntervention' => $interventionId, 'limit' => 50]);
 
+// Retrouve dans le journal le choix initial du client et l'éventuelle
+// recommandation automatique (on garde la première occurrence de chacune).
 $clientChoiceEntry = null;
 $recommendationEntry = null;
 foreach ($journal as $j) {
@@ -72,6 +87,9 @@ foreach ($journal as $j) {
     }
 }
 
+// Réaffectation possible seulement tant que l'intervention n'a pas démarré
+// (PLANIFIEE) ou après un refus du garage (ANNULEE). Le garage actuel est
+// exclu de la liste proposée.
 $canReassign = in_array($iv['statut'], ['PLANIFIEE', 'ANNULEE'], true);
 $otherGarages = $conn->prepare("SELECT idGarage, nomGarage FROM garage WHERE statutGarage = 'VALIDE' AND idGarage != ? ORDER BY nomGarage");
 $otherGarages->execute([(int)($iv['idGarage'] ?? 0)]);

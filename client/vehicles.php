@@ -3,11 +3,29 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 
+/**
+ * Véhicules du client : liste, ajout, modification et suppression.
+ *
+ * Accès : rôle client uniquement.
+ * POST ?action=add (CSRF)       : ajoute un véhicule au client.
+ * POST ?action=edit&id=N (CSRF) : modifie un véhicule du client.
+ * GET  ?action=delete&id=N      : supprime un véhicule du client ; la base
+ *                                 refuse si des interventions y sont liées.
+ * GET (client entreprise uniquement) : q (recherche marque/modèle/immat.),
+ *     statut, anomalie ('avec' | 'sans'), page (20 véhicules par page).
+ * Règles de saisie : validateModel(), validatePlate(), normalizePlate()…
+ * (config/config.php) ; l'immatriculation doit être unique.
+ * Table écrite : vehicule ; lues : vehicule, anomalie, intervention (badge).
+ * Fichiers liés : ajax/get_vehicle.php (pré-remplissage du formulaire
+ * d'édition), assets/js/main.js (filtres de saisie).
+ */
 requireRole('client');
 
 $db = new Database();
 $conn = $db->getConnection();
 
+// Profil du client connecté : le type (PARTICULIER/ENTREPRISE) règle les
+// libellés et la variante de la sidebar.
 $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $clientRoleLabel = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE') ? 'Client entreprise' : 'Client particulier';
 $isEntreprise = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
@@ -23,17 +41,26 @@ if ($action === 'add' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $marque = sanitize($_POST['marque'] ?? '');
         $modele = sanitize($_POST['modele'] ?? '');
-        $immatriculation = sanitize($_POST['immatriculation'] ?? '');
+        $immatriculation = normalizePlate(sanitize($_POST['immatriculation'] ?? ''));
         $annee = (int)($_POST['annee'] ?? 0);
         $couleur = sanitize($_POST['couleur'] ?? '');
         $kilometrage = (int)($_POST['kilometrage'] ?? 0);
 
+        // Validation serveur : la saisie est aussi filtrée en JS, mais on ne s'y fie pas.
         if (empty($marque)) $errors[] = 'La marque est requise.';
+        elseif (!validateLettersOnly($marque)) $errors[] = 'La marque ne doit contenir que des lettres.';
         if (empty($modele)) $errors[] = 'Le modèle est requis.';
+        elseif (!validateModel($modele)) $errors[] = 'Le modèle ne peut contenir que des lettres, des chiffres, des espaces et les signes - . + ! /';
         if (empty($immatriculation)) $errors[] = 'L\'immatriculation est requise.';
+        elseif (!validatePlate($immatriculation)) $errors[] = 'L\'immatriculation ne doit contenir que des lettres et des chiffres (espaces et tirets permis).';
+        if ($couleur !== '' && !validateLettersOnly($couleur)) $errors[] = 'La couleur ne doit contenir que des lettres.';
+        if (!validateDigitsOnly(trim($_POST['annee'] ?? '')) && trim($_POST['annee'] ?? '') !== '') $errors[] = 'L\'année ne doit contenir que des chiffres.';
+        elseif ($annee !== 0 && ($annee < 1900 || $annee > (int)date('Y') + 1)) $errors[] = 'L\'année du véhicule n\'est pas valide.';
+        if (!validateDigitsOnly(trim($_POST['kilometrage'] ?? '')) && trim($_POST['kilometrage'] ?? '') !== '') $errors[] = 'Le kilométrage ne doit contenir que des chiffres.';
 
         if (empty($errors)) {
             try {
+                // Unicité de l'immatriculation sur toute la base, pas seulement chez ce client.
                 $stmt = $conn->prepare("SELECT idVehicule FROM vehicule WHERE immatriculation = ?");
                 $stmt->execute([$immatriculation]);
                 if ($stmt->fetch()) {
@@ -61,22 +88,32 @@ if ($action === 'edit' && $_SERVER['REQUEST_METHOD'] === 'POST' && $vehicle_id) 
     } else {
         $marque = sanitize($_POST['marque'] ?? '');
         $modele = sanitize($_POST['modele'] ?? '');
-        $immatriculation = sanitize($_POST['immatriculation'] ?? '');
+        $immatriculation = normalizePlate(sanitize($_POST['immatriculation'] ?? ''));
         $annee = (int)($_POST['annee'] ?? 0);
         $couleur = sanitize($_POST['couleur'] ?? '');
         $kilometrage = (int)($_POST['kilometrage'] ?? 0);
 
+        // Validation serveur : la saisie est aussi filtrée en JS, mais on ne s'y fie pas.
         if (empty($marque)) $errors[] = 'La marque est requise.';
+        elseif (!validateLettersOnly($marque)) $errors[] = 'La marque ne doit contenir que des lettres.';
         if (empty($modele)) $errors[] = 'Le modèle est requis.';
+        elseif (!validateModel($modele)) $errors[] = 'Le modèle ne peut contenir que des lettres, des chiffres, des espaces et les signes - . + ! /';
         if (empty($immatriculation)) $errors[] = 'L\'immatriculation est requise.';
+        elseif (!validatePlate($immatriculation)) $errors[] = 'L\'immatriculation ne doit contenir que des lettres et des chiffres (espaces et tirets permis).';
+        if ($couleur !== '' && !validateLettersOnly($couleur)) $errors[] = 'La couleur ne doit contenir que des lettres.';
+        if (!validateDigitsOnly(trim($_POST['annee'] ?? '')) && trim($_POST['annee'] ?? '') !== '') $errors[] = 'L\'année ne doit contenir que des chiffres.';
+        elseif ($annee !== 0 && ($annee < 1900 || $annee > (int)date('Y') + 1)) $errors[] = 'L\'année du véhicule n\'est pas valide.';
+        if (!validateDigitsOnly(trim($_POST['kilometrage'] ?? '')) && trim($_POST['kilometrage'] ?? '') !== '') $errors[] = 'Le kilométrage ne doit contenir que des chiffres.';
 
         if (empty($errors)) {
             try {
+                // Même contrôle, en excluant le véhicule en cours de modification.
                 $stmt = $conn->prepare("SELECT idVehicule FROM vehicule WHERE immatriculation = ? AND idVehicule != ?");
                 $stmt->execute([$immatriculation, $vehicle_id]);
                 if ($stmt->fetch()) {
                     $errors[] = 'Cette immatriculation est déjà enregistrée.';
                 } else {
+                    // Le filtre idClient empêche de modifier le véhicule d'un autre client.
                     $stmt = $conn->prepare("
                         UPDATE vehicule
                         SET marque = ?, modele = ?, immatriculation = ?, annee = ?, couleur = ?, kilometrage = ?
@@ -96,6 +133,7 @@ if ($action === 'edit' && $_SERVER['REQUEST_METHOD'] === 'POST' && $vehicle_id) 
 // Supprimer un véhicule (RESTRICT : impossible tant que des interventions existent)
 if ($action === 'delete' && $vehicle_id) {
     try {
+        // Contrôle de propriété dans la requête même : idClient = client connecté.
         $stmt = $conn->prepare("DELETE FROM vehicule WHERE idVehicule = ? AND idClient = ?");
         $stmt->execute([$vehicle_id, $_SESSION['user_id']]);
         header('Location: vehicles.php?success=deleted');
@@ -173,6 +211,8 @@ if ($isEntreprise) {
     $vehicules = $stmt->fetchAll();
 }
 
+// Anomalies actives des véhicules affichés : leur nombre par véhicule et la
+// plus récente, pour l'aperçu de chaque carte ou ligne.
 $anomaliesCountParVehicule = [];
 $anomaliesParVehicule = [];
 if ($vehicules) {
@@ -248,7 +288,7 @@ include '../includes/header.php';
         <form method="GET" class="v2-filterbar" style="margin-top:22px;">
             <div class="v2-filterbar-search">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#8B90B3" stroke-width="1.8"/><path d="M21 21L16.5 16.5" stroke="#8B90B3" stroke-width="1.8" stroke-linecap="round"/></svg>
-                <input type="text" name="q" value="<?php echo h($searchQuery); ?>" placeholder="Rechercher : marque, modèle, immatriculation…">
+                <input type="text" name="q" value="<?php echo h($searchQuery); ?>" placeholder="Rechercher par marque, modèle, immatriculation…">
             </div>
             <select name="statut" onchange="this.form.submit()">
                 <option value="">Tous les statuts</option>
@@ -390,27 +430,27 @@ include '../includes/header.php';
             <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
             <div class="v2-form-group">
                 <label>Marque *</label>
-                <input type="text" name="marque" required style="width:100%; box-sizing:border-box; border:1px solid #DDE0F0; border-radius:10px; padding:10px 12px; font-family:'Manrope', sans-serif; font-size:13.5px;">
+                <input type="text" name="marque" data-only="letters" required placeholder="Ex. Toyota" style="width:100%; box-sizing:border-box; border:1px solid #DDE0F0; border-radius:10px; padding:10px 12px; font-family:'Manrope', sans-serif; font-size:13.5px;">
             </div>
             <div class="v2-form-group">
                 <label>Modèle *</label>
-                <input type="text" name="modele" required style="width:100%; box-sizing:border-box; border:1px solid #DDE0F0; border-radius:10px; padding:10px 12px; font-family:'Manrope', sans-serif; font-size:13.5px;">
+                <input type="text" name="modele" data-only="model" maxlength="50" required placeholder="Ex. Corolla" style="width:100%; box-sizing:border-box; border:1px solid #DDE0F0; border-radius:10px; padding:10px 12px; font-family:'Manrope', sans-serif; font-size:13.5px;">
             </div>
             <div class="v2-form-group">
                 <label>Immatriculation *</label>
-                <input type="text" name="immatriculation" required placeholder="AB-123-CD" style="width:100%; box-sizing:border-box; border:1px solid #DDE0F0; border-radius:10px; padding:10px 12px; font-family:'Manrope', sans-serif; font-size:13.5px;">
+                <input type="text" name="immatriculation" data-only="plate" maxlength="15" autocapitalize="characters" required placeholder="Ex. LT 123 AB" style="width:100%; box-sizing:border-box; border:1px solid #DDE0F0; border-radius:10px; padding:10px 12px; font-family:'Manrope', sans-serif; font-size:13.5px;">
             </div>
             <div class="v2-form-group">
                 <label>Année</label>
-                <input type="number" name="annee" min="1900" max="<?php echo date('Y'); ?>" style="width:100%; box-sizing:border-box; border:1px solid #DDE0F0; border-radius:10px; padding:10px 12px; font-family:'Manrope', sans-serif; font-size:13.5px;">
+                <input type="number" name="annee" data-only="digits" inputmode="numeric" placeholder="Ex. 2018" min="1900" max="<?php echo date('Y'); ?>" style="width:100%; box-sizing:border-box; border:1px solid #DDE0F0; border-radius:10px; padding:10px 12px; font-family:'Manrope', sans-serif; font-size:13.5px;">
             </div>
             <div class="v2-form-group">
                 <label>Kilométrage</label>
-                <input type="number" name="kilometrage" min="0" style="width:100%; box-sizing:border-box; border:1px solid #DDE0F0; border-radius:10px; padding:10px 12px; font-family:'Manrope', sans-serif; font-size:13.5px;">
+                <input type="number" name="kilometrage" data-only="digits" inputmode="numeric" min="0" placeholder="Ex. 85000" style="width:100%; box-sizing:border-box; border:1px solid #DDE0F0; border-radius:10px; padding:10px 12px; font-family:'Manrope', sans-serif; font-size:13.5px;">
             </div>
             <div class="v2-form-group">
                 <label>Couleur</label>
-                <input type="text" name="couleur" style="width:100%; box-sizing:border-box; border:1px solid #DDE0F0; border-radius:10px; padding:10px 12px; font-family:'Manrope', sans-serif; font-size:13.5px;">
+                <input type="text" name="couleur" data-only="letters" placeholder="Ex. Gris" style="width:100%; box-sizing:border-box; border:1px solid #DDE0F0; border-radius:10px; padding:10px 12px; font-family:'Manrope', sans-serif; font-size:13.5px;">
             </div>
             <div class="v2-modal-actions">
                 <button type="button" class="v2-btn-outline" id="cancelVehicle">Annuler</button>

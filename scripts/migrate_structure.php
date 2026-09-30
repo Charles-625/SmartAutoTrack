@@ -28,18 +28,42 @@ if (!$conn) {
 $dbName = $conn->query('SELECT DATABASE()')->fetchColumn();
 echo ($apply ? "APPLICATION" : "SIMULATION (aucune écriture)") . " sur « $dbName »\n\n";
 
+/**
+ * Indique si une colonne existe dans la base courante (via information_schema).
+ *
+ * @param PDO    $c   Connexion à la base.
+ * @param string $t   Table.
+ * @param string $col Colonne.
+ * @return bool
+ */
 function colExists(PDO $c, string $t, string $col): bool {
     $s = $c->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?");
     $s->execute([$t, $col]);
     return (bool)$s->fetchColumn();
 }
+/**
+ * Indique si une table existe dans la base courante.
+ *
+ * @param PDO    $c Connexion à la base.
+ * @param string $t Table.
+ * @return bool
+ */
 function tableExists(PDO $c, string $t): bool {
     $s = $c->prepare("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?");
     $s->execute([$t]);
     return (bool)$s->fetchColumn();
 }
 
+// Compteur global des actions (faites ou à faire), utilisé pour le bilan final.
 $n = 0;
+/**
+ * Affiche une action ([fait] en --apply, [à faire] en simulation) et
+ * incrémente le compteur global $n.
+ *
+ * @param bool   $apply Mode application (true) ou simulation (false).
+ * @param string $label Description lisible de l'action.
+ * @return void
+ */
 function announce(bool $apply, string $label): void {
     global $n;
     $n++;
@@ -137,18 +161,49 @@ if ($n === $before) echo "  ok, les 3 tables existent déjà\n";
 echo "\n3. Paiement CamPay\n";
 $before = $n;
 
+/**
+ * Renvoie la description d'une colonne (type, nullabilité, défaut, longueur),
+ * nécessaire pour modifier un ENUM sans perdre ses autres attributs.
+ *
+ * @param PDO    $c   Connexion à la base.
+ * @param string $t   Table.
+ * @param string $col Colonne.
+ * @return array|null Ligne information_schema.COLUMNS, ou null si absente.
+ */
 function columnInfo(PDO $c, string $t, string $col): ?array {
     $s = $c->prepare("SELECT DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?");
     $s->execute([$t, $col]);
     $row = $s->fetch(PDO::FETCH_ASSOC);
     return $row ?: null;
 }
+/**
+ * Indique si un index (y compris UNIQUE) existe sur une table.
+ *
+ * @param PDO    $c     Connexion à la base.
+ * @param string $t     Table.
+ * @param string $index Nom de l'index.
+ * @return bool
+ */
 function indexExists(PDO $c, string $t, string $index): bool {
     $s = $c->prepare("SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND INDEX_NAME=?");
     $s->execute([$t, $index]);
     return (bool)$s->fetchColumn();
 }
-/** Ajoute des valeurs à une colonne ENUM existante, en conservant nullabilité et défaut. */
+/**
+ * Ajoute des valeurs à une colonne ENUM existante, en conservant nullabilité et défaut.
+ *
+ * Les valeurs déjà présentes sont gardées dans leur ordre d'origine et les
+ * nouvelles ajoutées à la fin : les lignes existantes restent valides. Ne fait
+ * rien si la colonne n'existe pas ou n'est pas un ENUM (ex. typePaiement en
+ * VARCHAR, traité à part plus bas).
+ *
+ * @param PDO      $c      Connexion à la base.
+ * @param bool     $apply  Mode application (true) ou simulation (false).
+ * @param string   $t      Table.
+ * @param string   $col    Colonne ENUM.
+ * @param string[] $values Valeurs qui doivent être acceptées.
+ * @return void Annonce l'action (compteur $n) et, en --apply, exécute l'ALTER TABLE.
+ */
 function ensureEnumValues(PDO $c, bool $apply, string $t, string $col, array $values): void {
     $info = columnInfo($c, $t, $col);
     if (!$info || strtolower($info['DATA_TYPE']) !== 'enum') return;
@@ -186,6 +241,9 @@ if (!tableExists($conn, 'paiement')) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 }
 
+// Colonnes, valeurs d'ENUM et index propres au flux CamPay (références
+// externe et CamPay, téléphone, opérateur), utilisés par includes/payments.php
+// et webhooks/campay.php.
 if (tableExists($conn, 'paiement')) {
     $paiementColumns = [
         ['idReparation', 'INT NULL'],

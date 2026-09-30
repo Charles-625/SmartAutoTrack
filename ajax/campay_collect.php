@@ -3,6 +3,18 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../includes/payments.php';
 
+/**
+ * Endpoint AJAX (JSON) : lance le paiement Mobile Money d'une réparation
+ * via CamPay. Appelé depuis client/reparations.php.
+ *
+ * Accès : client connecté, POST avec jeton CSRF.
+ * POST : reparation_id, telephone (numéro Mobile Money à débiter).
+ * Réponse : paiement_id, montant, ussd_code et operator ; la page interroge
+ * ensuite ajax/campay_status.php avec ce paiement_id.
+ *
+ * La vérification de propriété, le calcul du montant et l'écriture en table
+ * paiement sont faits par paymentStart() (includes/payments.php).
+ */
 header('Content-Type: application/json');
 
 requireJsonAuth(ROLE_CLIENT);

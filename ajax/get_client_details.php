@@ -2,6 +2,14 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 
+/**
+ * Endpoint AJAX (JSON) : fiche d'un client et liste de ses véhicules,
+ * pour les fenêtres de détail de l'administration.
+ *
+ * Accès : admin uniquement.
+ * GET : id (identifiant utilisateur du client).
+ * Tables lues : utilisateur, client, vehicule.
+ */
 header('Content-Type: application/json');
 
 requireJsonAuth('admin');

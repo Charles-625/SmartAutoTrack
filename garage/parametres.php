@@ -4,6 +4,22 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace garage — Paramètres du compte et documents administratifs.
+ *
+ * Accès : rôle « garage ».
+ * Actions (POST, jeton CSRF obligatoire) :
+ *   - action=change_theme : thème clair/sombre (session + utilisateur.themePreference).
+ *   - action=upload_document : dépôt d'un document (PDF, JPG ou PNG, 5 Mo max),
+ *     enregistré EN_ATTENTE de vérification par l'admin.
+ *   - action=delete_document : retrait d'un document encore EN_ATTENTE.
+ * Tables : utilisateur, documentgarage (écriture), intervention (lecture),
+ *          journalactivites (via log_activity()).
+ * Fichiers : uploads/garages/ (jamais servi directement, téléchargement via
+ *            ajax/download_garage_document.php) ; vérification côté admin
+ *            dans admin/garage_detail.php.
+ */
+
 requireRole('garage');
 
 $db = new Database();
@@ -27,6 +43,7 @@ $docTypes = [
     'autre' => 'Autre document',
 ];
 
+// Action : changer le thème d'affichage (session + préférence en base).
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'change_theme') {
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $errors[] = 'Session expirée, merci de réessayer.';
@@ -40,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'chang
     }
 }
 
+// Action : déposer un document administratif (PDF, JPG ou PNG, 5 Mo max).
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'upload_document') {
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $errors[] = 'Session expirée, merci de réessayer.';
@@ -108,6 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             $doc = $stmt->fetch();
             if ($doc) {
                 $conn->prepare("DELETE FROM documentgarage WHERE idDocument = ? AND idGarage = ?")->execute([$docId, $garageId]);
+                // Le fichier n'est supprimé que s'il se trouve bien sous uploads/garages/ (protection contre un chemin détourné en base).
                 $filePath = realpath(__DIR__ . '/../' . $doc['fichier']);
                 $baseDir = realpath(UPLOAD_PATH . 'garages');
                 if ($baseDir !== false && $filePath !== false && strpos($filePath, $baseDir . DIRECTORY_SEPARATOR) === 0 && is_file($filePath)) {
@@ -126,6 +145,7 @@ $stmt = $conn->prepare("SELECT themePreference FROM utilisateur WHERE idUtilisat
 $stmt->execute([$_SESSION['user_id']]);
 $currentTheme = $stmt->fetchColumn() ?: 'light';
 
+// Compteur du badge « Demandes d'intervention » de la sidebar.
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idGarage = ? AND idTechnicien IS NULL AND statut = 'PLANIFIEE'");
 $stmt->execute([$garageId]);
 $demandesEnAttente = (int)$stmt->fetchColumn();

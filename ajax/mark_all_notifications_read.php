@@ -2,6 +2,13 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 
+/**
+ * Endpoint AJAX (JSON) : marque comme lues toutes les notifications de
+ * l'utilisateur connecté (menu des notifications, assets/js/main.js).
+ *
+ * Accès : tout utilisateur connecté, POST avec jeton CSRF.
+ * Table écrite : notifications.
+ */
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {

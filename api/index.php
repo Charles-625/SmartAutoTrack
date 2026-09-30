@@ -1,6 +1,28 @@
 <?php
 require __DIR__ . '/config.php';
 
+/**
+ * Point d'entrée de l'API REST HÉRITÉE (JSON), sur l'ancienne base
+ * `smartautotrack` — et non sur la base `charles` du site actuel. Conservée
+ * à titre d'héritage (jetons push FCM : clients mobiles) ; les pages PHP et
+ * le JavaScript du site ne l'appellent pas.
+ *
+ * Routage manuel par chemin + méthode HTTP (voir la normalisation ci-dessous) :
+ *  - ping, auth/ping                     : test de disponibilité (public)
+ *  - auth/register, auth/login (POST)    : inscription / connexion (public)
+ *  - auth/me (GET), auth/logout (POST)   : session courante
+ *  - push/register (POST)                : jeton FCM de l'utilisateur connecté
+ *  - vehicles, vehicles/{id}             : lecture connectée, écriture admin
+ *  - anomalies, anomalies/{id}           : lecture connectée, écriture admin/technicien
+ *                                          (suppression admin), push FCM à la création
+ *  - reparations, reparations/{id}       : idem anomalies
+ *  - interventions, interventions/{id}   : lecture connectée, écriture admin
+ *
+ * Tables : users, vehicles, anomalies, reparations, interventions, push_tokens.
+ * Chaque route répond via json(), qui termine le script ; une route non
+ * reconnue tombe sur le 404 final.
+ */
+
 // Router simple par chemin + méthode
 $method = $_SERVER['REQUEST_METHOD'];
 // Préférence à PATH_INFO si disponible (index.php/xxx)
@@ -53,6 +75,7 @@ if ($path === 'auth/register' && $method === 'POST') {
   $email = trim($b['email'] ?? '');
   $mdp = $b['mot_de_passe'] ?? '';
   $statut = $b['statut'] ?? '';
+  // Attention (héritage) : le rôle est choisi librement par l'appelant, y compris 'admin'.
   if (!$nom || !$email || !$mdp || !in_array($statut, ['client','admin','technicien'], true)) json(['error'=>'champs_invalides'], 400);
   $pdo = db();
   $stmt = $pdo->prepare('SELECT id_user FROM users WHERE email=?');
@@ -75,6 +98,7 @@ if ($path === 'auth/login' && $method === 'POST') {
   $stmt->execute([$email]);
   $u = $stmt->fetch();
   if (!$u || !password_verify($mdp, $u['mot_de_passe'])) json(['error'=>'identifiants_invalides'], 401);
+  // Le hash ne doit jamais sortir en session ni dans la réponse.
   unset($u['mot_de_passe']);
   $_SESSION['user'] = $u;
   json(['ok'=>true,'user'=>$u]);
@@ -108,6 +132,7 @@ if ($path === 'auth/logout' && $method === 'POST') {
 if ($path === 'vehicles' && $method === 'GET') {
   $u = require_auth();
   $pdo = db();
+  // Un client ne voit que ses véhicules ; admin et technicien voient tout le parc.
   if ($u['statut'] === 'client') {
     $stmt = $pdo->prepare('SELECT * FROM vehicles WHERE client_id=? ORDER BY id_vehicle DESC');
     $stmt->execute([$u['id_user']]);

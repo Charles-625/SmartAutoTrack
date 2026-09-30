@@ -4,6 +4,19 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace technicien — Mes interventions (liste complète, tous statuts).
+ *
+ * Accès : rôle « technicien ».
+ * Actions :
+ *   - POST form=start : démarrer une de mes interventions PLANIFIEE (passage
+ *     à EN_COURS) et la journaliser.
+ *   - GET statut=a_demarrer|en_cours|terminee|annulee, date, vehicule : filtres.
+ * Tables : intervention (écriture), vehicule, utilisateur (lecture),
+ *          journalactivites (via technicien_log()).
+ * Liés : technicien/taches.php (même action « démarrer », vue réduite).
+ */
+
 requireRole('technicien');
 
 $db = new Database();
@@ -17,6 +30,7 @@ $selfId = (int)$_SESSION['user_id'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'start') {
     if (verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $interventionId = filter_var($_POST['intervention_id'] ?? null, FILTER_VALIDATE_INT);
+        // Seule une de MES interventions encore PLANIFIEE peut démarrer.
         $stmt = $conn->prepare("SELECT idIntervention FROM intervention WHERE idIntervention = ? AND idTechnicien = ? AND statut = 'PLANIFIEE'");
         $stmt->execute([$interventionId, $selfId]);
         if ($stmt->fetch()) {
@@ -64,10 +78,12 @@ $stmt = $conn->prepare("SELECT DISTINCT v.idVehicule AS id, v.marque, v.modele, 
 $stmt->execute([$selfId]);
 $vehiculesAssignes = $stmt->fetchAll();
 
+// Compteur du badge « Mes tâches » de la sidebar (tâches à démarrer).
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idTechnicien = ? AND statut = 'PLANIFIEE'");
 $stmt->execute([$selfId]);
 $tachesADemarrer = (int)$stmt->fetchColumn();
 
+// Étape de la frise de progression (1 à 3) affichée pour chaque intervention.
 $steps = ['PLANIFIEE' => 1, 'EN_COURS' => 2, 'TERMINEE' => 3];
 
 $pageTitle = 'Mes interventions';

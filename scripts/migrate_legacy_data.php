@@ -33,16 +33,41 @@ if (!$conn) {
 $dbName = $conn->query('SELECT DATABASE()')->fetchColumn();
 echo ($apply ? "APPLICATION" : "SIMULATION (aucune écriture)") . " sur « $dbName »\n\n";
 
+/**
+ * Indique si une colonne existe dans la base courante (via information_schema).
+ *
+ * @param PDO    $c   Connexion à la base.
+ * @param string $t   Table.
+ * @param string $col Colonne.
+ * @return bool
+ */
 function colExists(PDO $c, string $t, string $col): bool {
     $s = $c->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?");
     $s->execute([$t, $col]);
     return (bool)$s->fetchColumn();
 }
+/**
+ * Indique si une table existe dans la base courante.
+ *
+ * @param PDO    $c Connexion à la base.
+ * @param string $t Table.
+ * @return bool
+ */
 function tableExists(PDO $c, string $t): bool {
     $s = $c->prepare("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?");
     $s->execute([$t]);
     return (bool)$s->fetchColumn();
 }
+/**
+ * Indique si une ligne d'identifiant donné existe déjà : c'est ce contrôle
+ * qui rend la reprise des données idempotente (les ids sont conservés).
+ *
+ * @param PDO        $c  Connexion à la base.
+ * @param string     $t  Table cible.
+ * @param string     $pk Colonne clé primaire.
+ * @param int|string $id Identifiant recherché.
+ * @return bool
+ */
 function rowExists(PDO $c, string $t, string $pk, $id): bool {
     // En simulation, la table cible peut ne pas encore exister (elle serait créée à l'étape 2) :
     // dans ce cas, la ligne n'existe évidemment pas encore.
@@ -52,7 +77,16 @@ function rowExists(PDO $c, string $t, string $pk, $id): bool {
     return (bool)$s->fetchColumn();
 }
 
+// Compteur global des actions (faites ou à faire), utilisé pour le bilan final.
 $n = 0;
+/**
+ * Affiche une action ([fait] en --apply, [à faire] en simulation) et
+ * incrémente le compteur global $n.
+ *
+ * @param bool   $apply Mode application (true) ou simulation (false).
+ * @param string $label Description lisible de l'action.
+ * @return void
+ */
 function announce(bool $apply, string $label): void {
     global $n;
     $n++;
@@ -171,6 +205,9 @@ foreach ($users as [$id, $nom, $prenom, $email, $tel, $role, $hash, $comp, $exp,
     if (rowExists($conn, 'utilisateur', 'idUtilisateur', $id)) continue;
     announce($apply, "utilisateur #$id ($role) : $prenom $nom");
     if (!$apply) continue;
+    // Le compte commun va dans `utilisateur` ; le rôle se traduit par une ligne
+    // dans la table du rôle (administrateur, client + particulier, technicien),
+    // qui partage le même identifiant.
     $conn->prepare("INSERT INTO utilisateur (idUtilisateur, nom, prenom, motDePasse, email, telephone, themePreference, photoProfil) VALUES (?,?,?,?,?,?,?,?)")
         ->execute([$id, $nom, $prenom, $hash, $email, $tel, $theme, $photo]);
     if ($role === 'admin') {

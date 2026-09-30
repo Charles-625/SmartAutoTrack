@@ -4,6 +4,16 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Supervision des anomalies détectées sur les véhicules (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * Lecture seule : aucune action POST. Filtres GET : `statut` (active|resolue),
+ * `garage`, `technicien`, `date_from`, `date_to` (bornes de dateDetection).
+ *
+ * Tables lues : anomalie, vehicule, utilisateur (client et technicien),
+ * intervention, garage, technicien.
+ */
 requireRole('admin');
 
 $db = new Database();
@@ -18,6 +28,8 @@ $technicienFilter = filter_var($_GET['technicien'] ?? null, FILTER_VALIDATE_INT)
 $dateFrom = $_GET['date_from'] ?? '';
 $dateTo = $_GET['date_to'] ?? '';
 
+// « active » = NOUVELLE/EN_COURS, « resolue » = TRAITEE/IGNOREE. Les dates
+// saisies sont étendues à la journée entière (00:00:00 → 23:59:59).
 $where = [];
 $params = [];
 if ($statutFilter === 'active') { $where[] = "a.statut IN ('NOUVELLE', 'EN_COURS')"; }
@@ -28,6 +40,8 @@ if ($dateFrom) { $where[] = 'a.dateDetection >= ?'; $params[] = $dateFrom . ' 00
 if ($dateTo) { $where[] = 'a.dateDetection <= ?'; $params[] = $dateTo . ' 23:59:59'; }
 $whereSql = $where ? implode(' AND ', $where) : '1=1';
 
+// LEFT JOIN sur intervention : une anomalie peut exister sans intervention
+// rattachée. Liste plafonnée à 200 lignes pour garder la page légère.
 $stmt = $conn->prepare("
     SELECT a.idAnomalie AS id, a.description, a.type, a.niveau, a.statut, a.dateDetection,
            v.marque, v.modele, v.immatriculation,
@@ -51,6 +65,7 @@ $anomalies = $stmt->fetchAll();
 $garagesList = $conn->query("SELECT idGarage, nomGarage FROM garage WHERE statutGarage = 'VALIDE' ORDER BY nomGarage")->fetchAll();
 $techniciensList = $conn->query("SELECT u.idUtilisateur AS id, u.nom, u.prenom FROM utilisateur u JOIN technicien t ON t.idTechnicien = u.idUtilisateur ORDER BY u.nom")->fetchAll();
 
+// Compteurs globaux des cartes de synthèse, indépendants des filtres.
 $stats = $conn->query("
     SELECT COUNT(*) AS total,
            SUM(CASE WHEN statut IN ('NOUVELLE','EN_COURS') THEN 1 ELSE 0 END) AS actives,

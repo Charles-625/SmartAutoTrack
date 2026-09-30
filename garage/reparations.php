@@ -4,6 +4,20 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace garage — Réparations réalisées par le garage.
+ *
+ * Accès : rôle « garage ».
+ * Actions :
+ *   - POST form=new_reparation : renseigner la réparation d'une intervention
+ *     EN_COURS du garage. Dans une même transaction : création de la
+ *     réparation (TERMINEE), clôture de l'intervention, résolution de ses
+ *     anomalies ouvertes, journalisation et notification du client.
+ *   - GET action=new&intervention_id=… : ouvre directement le formulaire.
+ * Tables : reparation, intervention, anomalie, notifications (écriture),
+ *          vehicule, utilisateur (lecture), journalactivites (via garage_log()).
+ */
+
 requireRole('garage');
 
 $db = new Database();
@@ -43,12 +57,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'new_rep
         if ($cout < 0) $formErrors[] = 'Coût invalide.';
 
         if (empty($formErrors)) {
+            // Contrôle de propriété et d'état : intervention EN_COURS de CE garage.
             $stmt = $conn->prepare("SELECT idClient, idTechnicien, type FROM intervention WHERE idIntervention = ? AND idGarage = ? AND statut = 'EN_COURS'");
             $stmt->execute([$interventionId, $garageId]);
             $iv = $stmt->fetch();
             if (!$iv) {
                 $formErrors[] = 'Cette intervention n\'est pas (ou plus) en cours pour votre garage.';
             } else {
+                // Transaction : réparation, clôture de l'intervention et résolution des anomalies sont validées ensemble.
                 $conn->beginTransaction();
                 $stmt = $conn->prepare("
                     INSERT INTO reparation (idIntervention, idTechnicien, titre, description, diagnostic, travauxEffectues, piecesUtilisees, dureeIntervention, cout, recommandations, statut)
@@ -104,6 +120,7 @@ $stmt = $conn->prepare("
 $stmt->execute([$garageId]);
 $reparations = $stmt->fetchAll();
 
+// Compteur du badge « Demandes d'intervention » de la sidebar.
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idGarage = ? AND idTechnicien IS NULL AND statut = 'PLANIFIEE'");
 $stmt->execute([$garageId]);
 $demandesEnAttente = (int)$stmt->fetchColumn();
@@ -186,16 +203,16 @@ include '../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="gv2-form-group"><label for="repTitre">Titre du rapport</label><input type="text" name="titre" id="repTitre" required placeholder="Ex. : Remplacement plaquettes de frein"></div>
-            <div class="gv2-form-group"><label for="repDescription">Description générale</label><textarea name="description" id="repDescription" required></textarea></div>
-            <div class="gv2-form-group"><label for="repDiagnostic">Diagnostic</label><textarea name="diagnostic" id="repDiagnostic" required></textarea></div>
-            <div class="gv2-form-group"><label for="repTravaux">Travaux effectués</label><textarea name="travaux_effectues" id="repTravaux" required></textarea></div>
-            <div class="gv2-form-group"><label for="repPieces">Pièces utilisées</label><textarea name="pieces_utilisees" id="repPieces"></textarea></div>
+            <div class="gv2-form-group"><label for="repTitre">Titre du rapport</label><input type="text" name="titre" id="repTitre" required placeholder="Ex. Remplacement des plaquettes de frein"></div>
+            <div class="gv2-form-group"><label for="repDescription">Description générale</label><textarea name="description" id="repDescription" required placeholder="Ex. Bruit métallique au freinage à l'avant…"></textarea></div>
+            <div class="gv2-form-group"><label for="repDiagnostic">Diagnostic</label><textarea name="diagnostic" id="repDiagnostic" required placeholder="Ex. Plaquettes avant usées à 90 %…"></textarea></div>
+            <div class="gv2-form-group"><label for="repTravaux">Travaux effectués</label><textarea name="travaux_effectues" id="repTravaux" required placeholder="Ex. Remplacement des plaquettes avant, purge du circuit…"></textarea></div>
+            <div class="gv2-form-group"><label for="repPieces">Pièces utilisées</label><textarea name="pieces_utilisees" id="repPieces" placeholder="Ex. 2 plaquettes avant Bosch, liquide de frein DOT4"></textarea></div>
             <div class="gv2-form-row">
-                <div class="gv2-form-group"><label for="repDuree">Durée (heures)</label><input type="number" name="duree_intervention" id="repDuree" required min="0" step="0.5"></div>
-                <div class="gv2-form-group"><label for="repCout">Coût (XAF)</label><input type="number" name="cout" id="repCout" required min="0" step="1"></div>
+                <div class="gv2-form-group"><label for="repDuree">Durée (heures)</label><input type="number" name="duree_intervention" id="repDuree" required min="0" step="0.5" placeholder="Ex. 1.5"></div>
+                <div class="gv2-form-group"><label for="repCout">Coût (XAF)</label><input type="number" name="cout" data-only="digits" inputmode="numeric" id="repCout" required min="0" step="1" placeholder="Ex. 25000"></div>
             </div>
-            <div class="gv2-form-group"><label for="repRecommandations">Recommandations</label><textarea name="recommandations" id="repRecommandations"></textarea></div>
+            <div class="gv2-form-group"><label for="repRecommandations">Recommandations</label><textarea name="recommandations" id="repRecommandations" placeholder="Ex. Contrôler les disques dans 5 000 km"></textarea></div>
             <div class="gv2-modal-actions">
                 <button type="button" class="gv2-btn-outline" id="closeReparationModal">Annuler</button>
                 <button type="submit" class="gv2-btn-primary">Enregistrer et clôturer</button>

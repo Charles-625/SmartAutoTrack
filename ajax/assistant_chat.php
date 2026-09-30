@@ -3,6 +3,18 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../includes/ai.php';
 
+/**
+ * Endpoint AJAX (JSON) de l'assistant IA, appelé par assets/js/assistant.js.
+ *
+ * Accès : client ou admin connecté, POST uniquement avec jeton CSRF.
+ * POST action=reset : efface l'historique de conversation en session.
+ * POST message=... : envoie la question au modèle avec un contexte propre
+ * au rôle (données du client, ou vue globale pour l'admin) et l'historique
+ * récent. Longueur et débit limités (AI_MAX_MESSAGE_LENGTH, aiAllowMessage).
+ *
+ * Réponse : {success, answer} ou {success:false, message}. Toute la logique
+ * (contexte, appel au fournisseur, historique) est dans includes/ai.php.
+ */
 header('Content-Type: application/json');
 
 requireJsonAuth();
@@ -50,6 +62,7 @@ try {
 } catch (AiException $e) {
     http_response_code(503);
     $text = $e->getMessage();
+    // Le détail technique de l'erreur n'est montré qu'à l'admin.
     if ($role === ROLE_ADMIN && $e->detail !== '') {
         $text .= ' Détail : ' . $e->detail;
     }

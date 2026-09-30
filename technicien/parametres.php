@@ -4,6 +4,15 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace technicien — Paramètres du compte.
+ *
+ * Accès : rôle « technicien ».
+ * Action : POST action=change_theme (jeton CSRF) — thème clair/sombre,
+ * enregistré en session et dans utilisateur.themePreference.
+ * Tables : utilisateur (écriture), intervention (lecture, badge).
+ */
+
 requireRole('technicien');
 
 $db = new Database();
@@ -13,6 +22,7 @@ $selfId = (int)$_SESSION['user_id'];
 $success = '';
 $errors = [];
 
+// Action : changer le thème d'affichage (session + préférence en base).
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'change_theme') {
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $errors[] = 'Session expirée, merci de réessayer.';
@@ -30,6 +40,7 @@ $stmt = $conn->prepare("SELECT themePreference FROM utilisateur WHERE idUtilisat
 $stmt->execute([$selfId]);
 $currentTheme = $stmt->fetchColumn() ?: 'light';
 
+// Compteur du badge « Mes tâches » de la sidebar (tâches à démarrer).
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idTechnicien = ? AND statut = 'PLANIFIEE'");
 $stmt->execute([$selfId]);
 $tachesADemarrer = (int)$stmt->fetchColumn();

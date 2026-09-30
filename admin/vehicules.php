@@ -4,6 +4,15 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Parc de véhicules de tous les clients (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * Lecture seule. Filtres GET : `search` (véhicule ou propriétaire), `type`
+ * (particulier|entreprise), `etat` ; au plus 200 véhicules affichés.
+ *
+ * Tables lues : vehicule, utilisateur, client, anomalie, intervention.
+ */
 requireRole('admin');
 
 $db = new Database();
@@ -41,6 +50,7 @@ $stmt->execute($params);
 $vehicules = $stmt->fetchAll();
 
 $totalVehicules = (int)$conn->query("SELECT COUNT(*) FROM vehicule")->fetchColumn();
+// Un état NULL (véhicule jamais qualifié) est compté comme actif.
 $vehiculesActifs = (int)$conn->query("SELECT COUNT(*) FROM vehicule WHERE etat = 'BON' OR etat IS NULL")->fetchColumn();
 $vehiculesEnPanne = (int)$conn->query("SELECT COUNT(*) FROM vehicule WHERE etat = 'EN_PANNE'")->fetchColumn();
 
@@ -86,7 +96,7 @@ include '../includes/header.php';
         <form method="GET" class="av2-filterbar">
             <div class="av2-filterbar-search">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#8B90B3" stroke-width="1.8"/><path d="M21 21L16.5 16.5" stroke="#8B90B3" stroke-width="1.8" stroke-linecap="round"/></svg>
-                <input type="text" name="search" placeholder="Marque, modèle, immatriculation, propriétaire..." value="<?php echo h($search); ?>">
+                <input type="text" name="search" placeholder="Rechercher par marque, modèle, immatriculation, propriétaire…" value="<?php echo h($search); ?>">
             </div>
             <select name="type" onchange="this.form.submit()">
                 <option value="">Tous les types de client</option>

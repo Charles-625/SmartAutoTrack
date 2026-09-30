@@ -70,6 +70,11 @@ function paymentStatesForRepairs(PDO $conn, array $repairIds, ?int $now = null):
     return $states;
 }
 
+/**
+ * Trace une étape de paiement dans le journal d'activité (catégorie
+ * « reparation »), au nom du client. Un échec d'écriture du journal est
+ * seulement journalisé : il ne doit jamais faire échouer le paiement.
+ */
 function paymentLog(PDO $conn, string $nomActivite, array $paiement, ?string $description = null): void {
     try {
         log_activity($conn, $nomActivite, [
@@ -100,6 +105,8 @@ function paymentStart(PDO $conn, int $clientId, int $repairId, string $rawPhone)
         throw new CampayException('Numéro Mobile Money invalide (exemple : 6XX XX XX XX).');
     }
 
+    // Transaction + FOR UPDATE sur la réparation : deux clics simultanés ne
+    // peuvent pas créer deux paiements EN_ATTENTE pour la même réparation.
     $conn->beginTransaction();
     try {
         $repair = paymentPayableRepair($conn, $clientId, $repairId, true);
@@ -127,6 +134,9 @@ function paymentStart(PDO $conn, int $clientId, int $repairId, string $rawPhone)
         throw $e;
     }
 
+    // L'appel à CamPay se fait hors transaction (réseau lent) ; en cas
+    // d'échec, le paiement déjà créé est marqué ECHOUE pour libérer la
+    // réparation.
     $paiement = ['idPaiement' => $paiementId, 'idClient' => $clientId, 'idIntervention' => $repair['idIntervention'], 'idReparation' => $repairId];
     $charged = campayChargedAmount($amount);
     try {
@@ -161,6 +171,11 @@ function paymentFindForClient(PDO $conn, int $paiementId, int $clientId): ?array
     return $row ?: null;
 }
 
+/**
+ * Paiement correspondant à une notification CamPay (webhooks/campay.php) :
+ * recherché par référence CamPay, ou à défaut par notre référence externe
+ * (SAT-...) quand elle est fournie.
+ */
 function paymentFindByCampayReference(PDO $conn, string $reference, string $externalReference = ''): ?array {
     $stmt = $conn->prepare("
         SELECT p.*, r.titre AS reparation_titre
@@ -187,6 +202,8 @@ function paymentApplyCampayStatus(PDO $conn, array $paiement, array $transaction
         return $current;
     }
 
+    // Contrôle du montant : un paiement confirmé pour un autre montant que
+    // celui attendu n'est pas accepté comme PAYE (vérification manuelle).
     $error = null;
     $expected = campayChargedAmount((int)round((float)$paiement['montant']));
     if ($new === 'PAYE' && isset($transaction['amount']) && (int)round((float)$transaction['amount']) !== $expected) {
@@ -205,6 +222,9 @@ function paymentApplyCampayStatus(PDO $conn, array $paiement, array $transaction
     ");
     $stmt->execute([$new, $error, $transaction['operator'] ?? null, $new, date('Y-m-d H:i:s'), $paiement['idPaiement']]);
 
+    // rowCount() === 1 seulement pour la requête qui a réellement fait passer
+    // le paiement à PAYE : notification et journal ne partent qu'une fois,
+    // même si webhook et suivi de statut arrivent en même temps.
     if ($stmt->rowCount() === 1 && $new === 'PAYE') {
         $montant = number_format((float)$paiement['montant'], 0, ',', ' ');
         $titre = $paiement['reparation_titre'] ?? null;

@@ -3,6 +3,25 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 
+/**
+ * Page d'inscription publique (clients et techniciens uniquement).
+ *
+ * Les comptes garage et admin ne se créent pas ici. Un client est actif
+ * immédiatement ; un technicien est créé EN_ATTENTE et doit être validé
+ * par un administrateur (une notification est créée à cet effet).
+ *
+ * POST : champs communs (nom, prénom, email, téléphone, mot de passe soumis
+ * à includes/password_policy.php, rôle) puis, selon le rôle :
+ *  - client : type PARTICULIER (avec un premier véhicule) ou ENTREPRISE
+ *    (raison sociale, sans véhicule) ;
+ *  - technicien : compétences, expérience et documents justificatifs
+ *    (PDF/JPG/PNG, 5 Mo max, type vérifié sur le contenu).
+ *
+ * Tables écrites (dans une seule transaction) : utilisateur, client,
+ * particulier / entreprise, vehicule, technicien, technician_documents,
+ * notifications. Fichiers stockés dans uploads/techniciens/ et servis
+ * uniquement par ajax/download_document.php.
+ */
 $errors = [];
 $success = '';
 
@@ -29,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($telephone)) $errors[] = 'Le téléphone est requis.';
         elseif (!validateDigitsOnly($telephone)) $errors[] = 'Le téléphone ne doit contenir que des chiffres.';
         if (empty($mot_de_passe)) $errors[] = 'Le mot de passe est requis.';
-        if (strlen($mot_de_passe) < PASSWORD_MIN_LENGTH) $errors[] = 'Le mot de passe doit contenir au moins ' . PASSWORD_MIN_LENGTH . ' caractères.';
+        elseif ($pwError = passwordPolicyError($mot_de_passe)) $errors[] = $pwError;
         if ($mot_de_passe !== $confirmation) $errors[] = 'Les mots de passe ne correspondent pas.';
         if (!in_array($role, ['client', 'technicien'])) $errors[] = 'Rôle invalide.';
         
@@ -41,14 +60,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $marque = sanitize($_POST['marque'] ?? '');
             $modele = sanitize($_POST['modele'] ?? '');
-            $immatriculation = sanitize($_POST['immatriculation'] ?? '');
+            $immatriculation = normalizePlate(sanitize($_POST['immatriculation'] ?? ''));
 
             // Le véhicule n'est demandé qu'aux particuliers : une entreprise
             // ajoute sa flotte depuis son dashboard après inscription.
             if ($type_client === 'PARTICULIER') {
                 if (empty($marque)) $errors[] = 'La marque du véhicule est requise.';
+                elseif (!validateLettersOnly($marque)) $errors[] = 'La marque du véhicule ne doit contenir que des lettres.';
                 if (empty($modele)) $errors[] = 'Le modèle du véhicule est requis.';
+                elseif (!validateModel($modele)) $errors[] = 'Le modèle ne peut contenir que des lettres, des chiffres, des espaces et les signes - . + ! /';
                 if (empty($immatriculation)) $errors[] = 'L\'immatriculation est requise.';
+                elseif (!validatePlate($immatriculation)) $errors[] = 'L\'immatriculation ne doit contenir que des lettres et des chiffres (espaces et tirets permis).';
             }
 
             if ($type_client === 'ENTREPRISE' && empty($raison_sociale)) {
@@ -81,6 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Insertion en base de données
         if (empty($errors)) {
             try {
+                // Tout ou rien : l'utilisateur et ses fiches liées sont créés
+                // ensemble ; une erreur annule l'ensemble (rollBack plus bas).
                 $conn->beginTransaction();
 
                 // Insertion de l'utilisateur (le rôle n'est plus une colonne : il est
@@ -125,6 +149,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 // Si c'est un technicien, traiter l'upload des documents
                 if ($role === 'technicien' && isset($_FILES['documents']) && !empty($_FILES['documents']['name'][0])) {
+                    // Un fichier refusé n'annule pas l'inscription : il est
+                    // simplement signalé dans $errors et ignoré.
                     $upload_dir = __DIR__ . '/../uploads/techniciens/';
                     
                     // Créer le dossier s'il n'existe pas
@@ -168,6 +194,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             // Déplacer le fichier
                             if (move_uploaded_file($file_tmp, $file_path)) {
                                 // Déterminer le type de document
+                                // Classement indicatif d'après le nom du fichier, pour
+                                // aider l'administrateur lors de la validation.
                                 $document_type = 'autre';
                                 if (strpos(strtolower($file_name), 'diplome') !== false || strpos(strtolower($file_name), 'diplôme') !== false) {
                                     $document_type = 'diplome';
@@ -267,10 +295,12 @@ include '../includes/header.php';
         
         <form method="POST" class="auth-form" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-            
+
+            <p class="required-legend"><span class="required-star" aria-hidden="true">*</span> Champs obligatoires</p>
+
             <!-- Choix du rôle -->
             <div class="form-group">
-                <label class="form-label">Je suis :</label>
+                <label class="form-label">Je suis <span class="required-star" aria-hidden="true">*</span></label>
                 <div class="role-selection">
                     <label class="role-option">
                         <input type="radio" name="role" value="client" required>
@@ -294,23 +324,23 @@ include '../includes/header.php';
             <!-- Informations personnelles -->
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Nom *</label>
-                    <input type="text" name="nom" class="form-control" required value="<?php echo htmlspecialchars($_POST['nom'] ?? ''); ?>">
+                    <label class="form-label">Nom <span class="required-star" aria-hidden="true">*</span></label>
+                    <input type="text" name="nom" data-only="letters" class="form-control" required placeholder="Ex. Mbarga" value="<?php echo htmlspecialchars($_POST['nom'] ?? ''); ?>">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Prénom *</label>
-                    <input type="text" name="prenom" class="form-control" required value="<?php echo htmlspecialchars($_POST['prenom'] ?? ''); ?>">
+                    <label class="form-label">Prénom <span class="required-star" aria-hidden="true">*</span></label>
+                    <input type="text" name="prenom" data-only="letters" class="form-control" required placeholder="Ex. Jean" value="<?php echo htmlspecialchars($_POST['prenom'] ?? ''); ?>">
                 </div>
             </div>
             
             <div class="form-group">
-                <label class="form-label">Email *</label>
-                <input type="email" name="email" class="form-control" required value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>">
+                <label class="form-label">Email <span class="required-star" aria-hidden="true">*</span></label>
+                <input type="email" name="email" class="form-control" required placeholder="exemple@gmail.com" value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>">
             </div>
             
             <div class="form-group">
-                <label class="form-label">Téléphone *</label>
-                <input type="tel" name="telephone" class="form-control" required value="<?php echo htmlspecialchars($_POST['telephone'] ?? ''); ?>">
+                <label class="form-label">Téléphone <span class="required-star" aria-hidden="true">*</span></label>
+                <input type="tel" name="telephone" data-only="digits" inputmode="numeric" maxlength="15" class="form-control" required placeholder="Ex. 677123456" value="<?php echo htmlspecialchars($_POST['telephone'] ?? ''); ?>">
             </div>
             
             <!-- Type de client (pour les clients) -->
@@ -336,12 +366,12 @@ include '../includes/header.php';
                 </div>
                 <div id="entreprise-info" style="display: none; margin-top: 1.5rem;">
                     <div class="form-group">
-                        <label class="form-label">Raison sociale *</label>
-                        <input type="text" name="raison_sociale" class="form-control" value="<?php echo htmlspecialchars($_POST['raison_sociale'] ?? ''); ?>">
+                        <label class="form-label">Raison sociale <span class="required-star" aria-hidden="true">*</span></label>
+                        <input type="text" name="raison_sociale" class="form-control" placeholder="Ex. Transports Express SARL" value="<?php echo htmlspecialchars($_POST['raison_sociale'] ?? ''); ?>">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Adresse de l'entreprise</label>
-                        <input type="text" name="adresse_entreprise" class="form-control" value="<?php echo htmlspecialchars($_POST['adresse_entreprise'] ?? ''); ?>">
+                        <input type="text" name="adresse_entreprise" class="form-control" placeholder="Ex. Rue 1.234, Bastos, Yaoundé" value="<?php echo htmlspecialchars($_POST['adresse_entreprise'] ?? ''); ?>">
                     </div>
                     <p class="form-text">Vous pourrez ajouter les véhicules de votre flotte depuis votre tableau de bord une fois inscrit.</p>
                 </div>
@@ -353,17 +383,17 @@ include '../includes/header.php';
                 <h3>Informations du véhicule</h3>
                 <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label">Marque *</label>
-                        <input type="text" name="marque" class="form-control" value="<?php echo htmlspecialchars($_POST['marque'] ?? ''); ?>">
+                        <label class="form-label">Marque <span class="required-star" aria-hidden="true">*</span></label>
+                        <input type="text" name="marque" data-only="letters" class="form-control" placeholder="Ex. Toyota" value="<?php echo htmlspecialchars($_POST['marque'] ?? ''); ?>">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Modèle *</label>
-                        <input type="text" name="modele" class="form-control" value="<?php echo htmlspecialchars($_POST['modele'] ?? ''); ?>">
+                        <label class="form-label">Modèle <span class="required-star" aria-hidden="true">*</span></label>
+                        <input type="text" name="modele" data-only="model" maxlength="50" class="form-control" placeholder="Ex. Corolla" value="<?php echo htmlspecialchars($_POST['modele'] ?? ''); ?>">
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Immatriculation *</label>
-                    <input type="text" name="immatriculation" class="form-control" value="<?php echo htmlspecialchars($_POST['immatriculation'] ?? ''); ?>">
+                    <label class="form-label">Immatriculation <span class="required-star" aria-hidden="true">*</span></label>
+                    <input type="text" name="immatriculation" data-only="plate" maxlength="15" autocapitalize="characters" class="form-control" placeholder="Ex. LT 123 AB" value="<?php echo htmlspecialchars($_POST['immatriculation'] ?? ''); ?>">
                 </div>
             </div>
             
@@ -371,12 +401,12 @@ include '../includes/header.php';
             <div id="technician-info" class="technician-section" style="display: none;">
                 <h3>Informations professionnelles</h3>
                 <div class="form-group">
-                    <label class="form-label">Compétences *</label>
-                    <textarea name="competences" class="form-control" rows="3" placeholder="Décrivez vos compétences techniques..."><?php echo htmlspecialchars($_POST['competences'] ?? ''); ?></textarea>
+                    <label class="form-label">Compétences <span class="required-star" aria-hidden="true">*</span></label>
+                    <textarea name="competences" class="form-control" rows="3" placeholder="Ex. Mécanique générale, diagnostic électronique, climatisation"><?php echo htmlspecialchars($_POST['competences'] ?? ''); ?></textarea>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Expérience *</label>
-                    <textarea name="experience" class="form-control" rows="3" placeholder="Décrivez votre expérience professionnelle..."><?php echo htmlspecialchars($_POST['experience'] ?? ''); ?></textarea>
+                    <label class="form-label">Expérience <span class="required-star" aria-hidden="true">*</span></label>
+                    <textarea name="experience" class="form-control" rows="3" placeholder="Ex. 5 ans en garage agréé Toyota"><?php echo htmlspecialchars($_POST['experience'] ?? ''); ?></textarea>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Documents (optionnel)</label>
@@ -389,13 +419,12 @@ include '../includes/header.php';
             <!-- Mot de passe -->
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Mot de passe *</label>
-                    <input type="password" name="mot_de_passe" class="form-control" required>
-                    <div class="form-text">Minimum <?php echo PASSWORD_MIN_LENGTH; ?> caractères</div>
+                    <label class="form-label">Mot de passe <span class="required-star" aria-hidden="true">*</span></label>
+                    <input type="password" name="mot_de_passe" class="form-control" required data-password-policy autocomplete="new-password" placeholder="<?php echo PASSWORD_MIN_LENGTH; ?> caractères minimum">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Confirmation *</label>
-                    <input type="password" name="confirmation" class="form-control" required>
+                    <label class="form-label">Confirmation <span class="required-star" aria-hidden="true">*</span></label>
+                    <input type="password" name="confirmation" class="form-control" required placeholder="Retapez le mot de passe">
                 </div>
             </div>
             
@@ -520,6 +549,18 @@ include '../includes/header.php';
     margin-bottom: 1rem;
     color: var(--primary-color);
     font-size: 1.25rem;
+}
+
+.required-star {
+    color: #E03131;
+    font-weight: 700;
+    margin-left: 2px;
+}
+
+.required-legend {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin-bottom: 1rem;
 }
 
 .btn-block {

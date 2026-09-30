@@ -3,6 +3,26 @@ require_once 'config/config.php';
 require_once 'config/database.php';
 require_once 'config/roles.php';
 
+/**
+ * Page « Mon profil », commune aux quatre rôles (client, garage, technicien,
+ * admin), chacun avec son habillage v2 (sidebar du rôle).
+ *
+ * Accès : tout utilisateur connecté ; il ne modifie que SA ligne
+ * (toujours $_SESSION['user_id'], jamais un identifiant reçu du navigateur).
+ *
+ * Actions POST (toutes protégées par jeton CSRF) :
+ *   - sans champ `form`         : infos personnelles (nom, prénom, email,
+ *                                 téléphone) et changement de mot de passe
+ *                                 (mot de passe actuel exigé, politique de
+ *                                 includes/password_policy.php) ;
+ *   - form=update_entreprise    : raison sociale / adresse (client entreprise) ;
+ *   - form=update_garage        : nom / adresse du garage (rôle garage) ;
+ *   - form=update_technicien    : spécialité, compétences, expérience.
+ *
+ * Tables : utilisateur, entreprise, garage, technicien (écriture) ;
+ * intervention (lecture, compteurs des badges de la sidebar).
+ */
+
 requireAuth();
 
 $db = new Database();
@@ -37,6 +57,7 @@ if ($user) {
     }
 }
 
+// Compte introuvable (supprimé entre-temps) : retour à la connexion.
 if (!$user) {
     redirect('auth/login.php');
 }
@@ -54,6 +75,8 @@ $interventionsActivesCount = 0;
 $entrepriseInfo = null;
 $garageInfo = null;
 $technicienInfo = null;
+// Données propres au rôle : badge « interventions » de la sidebar et bloc
+// d'informations complémentaires (entreprise, garage ou technicien).
 if ($isClientV2) {
     $clientProfile = getUserProfile($conn, (int)$user['id']);
     $isEntreprise = (($clientProfile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
@@ -130,8 +153,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['form'])) {
                 $errors[] = 'Le mot de passe actuel est requis pour le changement.';
             } elseif (!verifyPassword($mot_de_passe_actuel, $user['mot_de_passe'])) {
                 $errors[] = 'Le mot de passe actuel est incorrect.';
-            } elseif (strlen($nouveau_mot_de_passe) < PASSWORD_MIN_LENGTH) {
-                $errors[] = 'Le nouveau mot de passe doit contenir au moins ' . PASSWORD_MIN_LENGTH . ' caractères.';
+            } elseif ($pwError = passwordPolicyError($nouveau_mot_de_passe, 'Le nouveau mot de passe')) {
+                $errors[] = $pwError;
             } elseif ($nouveau_mot_de_passe !== $confirmation) {
                 $errors[] = 'Les nouveaux mots de passe ne correspondent pas.';
             }
@@ -243,6 +266,7 @@ if ($isTechnicienV2 && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] 
     }
 }
 
+// Habillage : feuille de style et classe du <body> selon le rôle.
 $pageTitle = 'Mon Profil';
 if ($v2Role === 'client') {
     $hideNavbar = true;
@@ -356,11 +380,11 @@ include 'includes/header.php';
                     <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                     <div class="form-group">
                         <label class="form-label">Raison sociale *</label>
-                        <input type="text" name="raison_sociale" class="form-control" required value="<?php echo h($entrepriseInfo['raisonSociale'] ?? ''); ?>" placeholder="Ex. : SmartAutoTrack Flotte SARL">
+                        <input type="text" name="raison_sociale" class="form-control" required value="<?php echo h($entrepriseInfo['raisonSociale'] ?? ''); ?>" placeholder="Ex. Transports Express SARL">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Adresse</label>
-                        <input type="text" name="adresse_entreprise" class="form-control" value="<?php echo h($entrepriseInfo['adresse'] ?? ''); ?>" placeholder="Adresse du siège">
+                        <input type="text" name="adresse_entreprise" class="form-control" value="<?php echo h($entrepriseInfo['adresse'] ?? ''); ?>" placeholder="Ex. Rue 1.234, Bastos, Yaoundé">
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Enregistrer</button>
@@ -385,11 +409,11 @@ include 'includes/header.php';
                     <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                     <div class="form-group">
                         <label class="form-label">Nom du garage *</label>
-                        <input type="text" name="nom_garage" class="form-control" required value="<?php echo h($garageInfo['nomGarage'] ?? ''); ?>" placeholder="Ex. : Garage Nord Auto">
+                        <input type="text" name="nom_garage" class="form-control" required value="<?php echo h($garageInfo['nomGarage'] ?? ''); ?>" placeholder="Ex. Garage Central Yaoundé">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Adresse</label>
-                        <input type="text" name="adresse_garage" class="form-control" value="<?php echo h($garageInfo['adresse'] ?? ''); ?>" placeholder="Adresse du garage">
+                        <input type="text" name="adresse_garage" class="form-control" value="<?php echo h($garageInfo['adresse'] ?? ''); ?>" placeholder="Ex. Rue 1.234, Bastos, Yaoundé">
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Enregistrer</button>
@@ -412,15 +436,15 @@ include 'includes/header.php';
                     <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                     <div class="form-group">
                         <label class="form-label">Spécialité</label>
-                        <input type="text" name="specialite" class="form-control" value="<?php echo h($technicienInfo['specialite'] ?? ''); ?>" placeholder="Ex. : Freinage, Moteur & diagnostic...">
+                        <input type="text" name="specialite" class="form-control" value="<?php echo h($technicienInfo['specialite'] ?? ''); ?>" placeholder="Ex. Électricité automobile">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Compétences</label>
-                        <textarea name="competences" class="form-control" rows="3" placeholder="Vos compétences principales..."><?php echo h($technicienInfo['competences'] ?? ''); ?></textarea>
+                        <textarea name="competences" class="form-control" rows="3" placeholder="Ex. Mécanique générale, diagnostic électronique, climatisation"><?php echo h($technicienInfo['competences'] ?? ''); ?></textarea>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Expérience</label>
-                        <textarea name="experience" class="form-control" rows="3" placeholder="Votre parcours et expérience..."><?php echo h($technicienInfo['experience'] ?? ''); ?></textarea>
+                        <textarea name="experience" class="form-control" rows="3" placeholder="Ex. 5 ans en garage agréé Toyota"><?php echo h($technicienInfo['experience'] ?? ''); ?></textarea>
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Enregistrer</button>
@@ -443,22 +467,22 @@ include 'includes/header.php';
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label">Nom *</label>
-                            <input type="text" name="nom" class="form-control" required value="<?php echo htmlspecialchars($user['nom']); ?>">
+                            <input type="text" name="nom" data-only="letters" class="form-control" required placeholder="Ex. Mbarga" value="<?php echo htmlspecialchars($user['nom']); ?>">
                         </div>
                         <div class="form-group">
                             <label class="form-label">Prénom *</label>
-                            <input type="text" name="prenom" class="form-control" required value="<?php echo htmlspecialchars($user['prenom']); ?>">
+                            <input type="text" name="prenom" data-only="letters" class="form-control" required placeholder="Ex. Jean" value="<?php echo htmlspecialchars($user['prenom']); ?>">
                         </div>
                     </div>
                     
                     <div class="form-group">
                         <label class="form-label">Email *</label>
-                        <input type="email" name="email" class="form-control" required value="<?php echo htmlspecialchars($user['email']); ?>">
+                        <input type="email" name="email" class="form-control" required placeholder="exemple@gmail.com" value="<?php echo htmlspecialchars($user['email']); ?>">
                     </div>
                     
                     <div class="form-group">
                         <label class="form-label">Téléphone *</label>
-                        <input type="tel" name="telephone" class="form-control" required value="<?php echo htmlspecialchars($user['telephone']); ?>">
+                        <input type="tel" name="telephone" data-only="digits" inputmode="numeric" maxlength="15" class="form-control" required placeholder="Ex. 677123456" value="<?php echo htmlspecialchars($user['telephone']); ?>">
                     </div>
                     
                     <div class="form-actions">
@@ -480,18 +504,17 @@ include 'includes/header.php';
                     
                     <div class="form-group">
                         <label class="form-label">Mot de passe actuel *</label>
-                        <input type="password" name="mot_de_passe_actuel" class="form-control" id="currentPassword">
+                        <input type="password" name="mot_de_passe_actuel" class="form-control" id="currentPassword" placeholder="••••••••">
                     </div>
                     
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label">Nouveau mot de passe *</label>
-                            <input type="password" name="nouveau_mot_de_passe" class="form-control" id="newPassword">
-                            <div class="form-text">Minimum <?php echo PASSWORD_MIN_LENGTH; ?> caractères</div>
+                            <input type="password" name="nouveau_mot_de_passe" class="form-control" id="newPassword" data-password-policy autocomplete="new-password" placeholder="<?php echo PASSWORD_MIN_LENGTH; ?> caractères minimum">
                         </div>
                         <div class="form-group">
                             <label class="form-label">Confirmation *</label>
-                            <input type="password" name="confirmation" class="form-control" id="confirmPassword">
+                            <input type="password" name="confirmation" class="form-control" id="confirmPassword" placeholder="Retapez le mot de passe">
                         </div>
                     </div>
                     
@@ -643,9 +666,10 @@ $(document).ready(function() {
             return false;
         }
         
-        if (newPassword.length < <?php echo PASSWORD_MIN_LENGTH; ?>) {
+        if (newPassword.length < <?php echo PASSWORD_MIN_LENGTH; ?> || !/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword)
+            || !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
             e.preventDefault();
-            showToast('Le nouveau mot de passe doit contenir au moins <?php echo PASSWORD_MIN_LENGTH; ?> caractères', 'error');
+            showToast('Le nouveau mot de passe doit contenir au moins <?php echo PASSWORD_MIN_LENGTH; ?> caractères, une minuscule, une majuscule, un chiffre et un caractère spécial', 'error');
             return false;
         }
         

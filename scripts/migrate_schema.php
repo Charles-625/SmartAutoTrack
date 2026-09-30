@@ -35,7 +35,17 @@ if (!$conn) {
 $dbName = $conn->query('SELECT DATABASE()')->fetchColumn();
 echo ($apply ? "APPLICATION" : "SIMULATION (aucune modification)") . " sur la base « $dbName »\n\n";
 
+// Compteur global des modifications (faites ou à faire), pour le bilan final.
 $changes = 0;
+/**
+ * Annonce une modification et l'exécute uniquement en mode --apply.
+ *
+ * @param PDO    $conn  Connexion à la base.
+ * @param bool   $apply Mode application (true) ou simulation (false).
+ * @param string $label Description lisible de la modification.
+ * @param string $sql   Requête DDL à exécuter.
+ * @return void Incrémente le compteur global $changes.
+ */
 function step(PDO $conn, bool $apply, string $label, string $sql): void {
     global $changes;
     $changes++;
@@ -45,12 +55,27 @@ function step(PDO $conn, bool $apply, string $label, string $sql): void {
     }
 }
 
+/**
+ * Indique si une table existe dans la base courante.
+ *
+ * @param PDO    $c Connexion à la base.
+ * @param string $t Table.
+ * @return bool
+ */
 function tableExists(PDO $c, string $t): bool {
     $s = $c->prepare('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?');
     $s->execute([$t]);
     return (bool)$s->fetchColumn();
 }
 
+/**
+ * Renvoie le type SQL complet d'une colonne (ex. "enum('a','b')").
+ *
+ * @param PDO    $c   Connexion à la base.
+ * @param string $t   Table.
+ * @param string $col Colonne.
+ * @return string|null Type de la colonne, ou null si elle n'existe pas.
+ */
 function columnType(PDO $c, string $t, string $col): ?string {
     $s = $c->prepare('SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
     $s->execute([$t, $col]);
@@ -58,12 +83,28 @@ function columnType(PDO $c, string $t, string $col): ?string {
     return $r === false ? null : $r;
 }
 
+/**
+ * Indique si un index existe sur une table.
+ *
+ * @param PDO    $c   Connexion à la base.
+ * @param string $t   Table.
+ * @param string $idx Nom de l'index.
+ * @return bool
+ */
 function indexExists(PDO $c, string $t, string $idx): bool {
     $s = $c->prepare('SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?');
     $s->execute([$t, $idx]);
     return (bool)$s->fetchColumn();
 }
 
+/**
+ * Indique si une contrainte de clé étrangère existe sur une table.
+ *
+ * @param PDO    $c    Connexion à la base.
+ * @param string $t    Table.
+ * @param string $name Nom de la contrainte.
+ * @return bool
+ */
 function fkExists(PDO $c, string $t, string $name): bool {
     $s = $c->prepare("SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ? AND CONSTRAINT_TYPE = 'FOREIGN KEY'");
     $s->execute([$t, $name]);

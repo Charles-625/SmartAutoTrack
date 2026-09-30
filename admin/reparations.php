@@ -4,6 +4,16 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Supervision des réparations de toute la plateforme (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * Lecture seule. Filtres GET : `search` (marque, modèle, immatriculation,
+ * titre), `garage`, `statut` ; au plus 200 réparations affichées.
+ *
+ * Tables lues : reparation, intervention, vehicule, utilisateur (client,
+ * technicien), garage.
+ */
 requireRole('admin');
 
 $db = new Database();
@@ -25,6 +35,8 @@ if ($garageFilter) { $where[] = 'i.idGarage = ?'; $params[] = $garageFilter; }
 if ($statutFilter) { $where[] = 'r.statut = ?'; $params[] = $statutFilter; }
 $whereSql = $where ? implode(' AND ', $where) : '1=1';
 
+// Le garage et le client sont retrouvés via l'intervention d'origine ; le
+// technicien est celui de la réparation (LEFT JOIN : il peut être absent).
 $stmt = $conn->prepare("
     SELECT r.idReparation AS id, r.titre, r.diagnostic, r.travauxEffectues, r.piecesUtilisees, r.cout, r.statut, r.dateReparation, r.dureeIntervention,
            v.marque, v.modele, v.immatriculation,
@@ -92,7 +104,7 @@ include '../includes/header.php';
         <form method="GET" class="av2-filterbar">
             <div class="av2-filterbar-search">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#8B90B3" stroke-width="1.8"/><path d="M21 21L16.5 16.5" stroke="#8B90B3" stroke-width="1.8" stroke-linecap="round"/></svg>
-                <input type="text" name="search" placeholder="Véhicule, titre..." value="<?php echo h($search); ?>">
+                <input type="text" name="search" placeholder="Rechercher par marque, modèle, immatriculation, titre…" value="<?php echo h($search); ?>">
             </div>
             <select name="garage" onchange="this.form.submit()">
                 <option value="">Tous les garages</option>

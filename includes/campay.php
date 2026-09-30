@@ -10,8 +10,13 @@
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/http_client.php';
 
+/** Erreur de paiement dont le message peut être affiché tel quel au client. */
 class CampayException extends RuntimeException {}
 
+/**
+ * URL de l'API CamPay, sans barre finale : CAMPAY_BASE_URL si renseignée,
+ * sinon démo ou production selon CAMPAY_USE_DEMO (démo par défaut).
+ */
 function campayBaseUrl(): string {
     $url = (string)appConfig('CAMPAY_BASE_URL', '');
     if ($url === '') {
@@ -25,12 +30,14 @@ function campayIsSimulation(): bool {
     return appConfigBool('CAMPAY_SIMULATION', false);
 }
 
+/** Identifiants CamPay présents (jeton permanent ou couple identifiant/mot de passe), ou mode simulation. */
 function campayIsConfigured(): bool {
     return campayIsSimulation()
         || appConfig('CAMPAY_TOKEN')
         || (appConfig('CAMPAY_USERNAME') && appConfig('CAMPAY_PASSWORD'));
 }
 
+/** L'API utilisée est celle de démonstration (aucun argent réel débité). */
 function campayIsDemo(): bool {
     return parse_url(campayBaseUrl(), PHP_URL_HOST) === 'demo.campay.net';
 }
@@ -72,6 +79,12 @@ function campayStatusToPaiement(string $campayStatus): string {
     }
 }
 
+/**
+ * Jeton d'accès à l'API : CAMPAY_TOKEN s'il est configuré, sinon jeton
+ * temporaire demandé à /api/token/ avec CAMPAY_USERNAME/PASSWORD.
+ *
+ * @throws CampayException si CamPay refuse les identifiants.
+ */
 function campayAccessToken(): string {
     $token = (string)appConfig('CAMPAY_TOKEN', '');
     if ($token !== '') {
@@ -88,6 +101,16 @@ function campayAccessToken(): string {
     return $response['data']['token'];
 }
 
+/**
+ * Appel authentifié à l'API CamPay. Toute réponse hors 2xx est journalisée
+ * côté serveur et convertie en CampayException (avec le message de CamPay
+ * quand il en fournit un).
+ *
+ * @param string     $method 'GET' ou 'POST'.
+ * @param string     $path   Chemin de l'API (ex. '/api/collect/').
+ * @param array|null $body   Corps JSON, ou null.
+ * @return array Réponse JSON décodée (tableau vide si non JSON).
+ */
 function campayRequest(string $method, string $path, ?array $body = null): array {
     $response = httpJsonRequest($method, campayBaseUrl() . $path, ['Authorization' => 'Token ' . campayAccessToken()], $body);
     if ($response['status'] < 200 || $response['status'] >= 300) {
@@ -132,6 +155,7 @@ function campayTransactionStatus(string $reference): array {
     return campayRequest('GET', '/api/transaction/' . rawurlencode($reference) . '/');
 }
 
+/** Décodage base64url (alphabet -_ sans remplissage) utilisé par les JWT. */
 function campayBase64UrlDecode(string $data): string {
     $remainder = strlen($data) % 4;
     if ($remainder) {

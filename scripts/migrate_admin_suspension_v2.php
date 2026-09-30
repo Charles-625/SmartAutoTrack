@@ -17,6 +17,17 @@
 require __DIR__ . '/../config/database.php';
 $conn = (new Database())->getConnection();
 
+/**
+ * Indique si une colonne ENUM accepte déjà une valeur donnée (rend le script
+ * idempotent). Table/colonne toujours fournies par le code, jamais par
+ * l'utilisateur : l'interpolation directe est sûre.
+ *
+ * @param PDO    $conn   Connexion à la base.
+ * @param string $table  Table concernée.
+ * @param string $column Colonne ENUM à inspecter.
+ * @param string $value  Valeur recherchée (sans guillemets).
+ * @return bool true si la valeur figure déjà dans la définition de l'ENUM.
+ */
 function enumHasValue(PDO $conn, string $table, string $column, string $value): bool {
     $col = $conn->query("SHOW COLUMNS FROM `$table` LIKE '$column'")->fetch();
     return $col && stripos($col['Type'], "'$value'") !== false;

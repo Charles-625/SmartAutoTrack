@@ -4,11 +4,25 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Tableau de bord de l'espace client (particulier ou entreprise).
+ *
+ * Accès : rôle client uniquement.
+ * Lecture seule : aucune action POST/GET n'est traitée ici.
+ * Affiche : véhicules et leur anomalie active la plus récente, interventions
+ * actives (5 max), dernières réparations terminées, messages non lus et
+ * aperçu des notifications.
+ * Tables lues : vehicule, anomalie, intervention, garage, utilisateur,
+ * reparation, messages, notifications (et entreprise via getUserProfile()).
+ * Fichiers liés : client/includes/helpers.php (v2_*), client/includes/sidebar.php.
+ */
 requireRole('client');
 
 $db = new Database();
 $conn = $db->getConnection();
 
+// Profil du client connecté : le type (PARTICULIER/ENTREPRISE) règle les
+// libellés et la variante de la sidebar.
 $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $clientRoleLabel = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE') ? 'Client entreprise' : 'Client particulier';
 $isEntreprise = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
@@ -17,6 +31,8 @@ $isEntreprise = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
 // Données réelles du client connecté
 // ============================================================
 
+// Heure du serveur MySQL : référence des dates relatives (v2_relative), pour
+// éviter tout décalage entre le fuseau de PHP et celui de la base.
 $dbNow = $conn->query('SELECT NOW()')->fetchColumn();
 
 // Véhicules (statut historique reconstruit depuis `etat`, comme le reste du site)
@@ -74,6 +90,8 @@ $stmt = $conn->prepare("
 ");
 $stmt->execute([$_SESSION['user_id']]);
 $interventions = $stmt->fetchAll();
+// Statut d'affichage : une intervention PLANIFIEE sans garage ni technicien
+// n'est encore qu'une demande en attente d'affectation.
 foreach ($interventions as &$iv) {
     if ($iv['statut'] === 'EN_COURS') {
         $iv['display'] = 'en_cours';

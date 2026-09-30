@@ -5,10 +5,23 @@ require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 require_once '../includes/payments.php';
 
+/**
+ * Supervision des paiements clients (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * Lecture seule. Filtre GET `statut` (PAYE, EN_ATTENTE, ECHOUE, ANNULE) ;
+ * au plus 200 transactions affichées.
+ *
+ * Tables lues : paiement, utilisateur, intervention.
+ * Liens : includes/payments.php (paymentsReady), webhooks/campay.php.
+ */
 requireRole('admin');
 
 $db = new Database();
 $conn = $db->getConnection();
+// Vrai si la migration CamPay est appliquée : les colonnes CamPay ne sont
+// sélectionnées que si elles existent, pour que la page marche aussi sur un
+// schéma plus ancien.
 $campayColumns = paymentsReady($conn);
 
 // La table `paiement` existe déjà dans le schéma : supervision réelle,

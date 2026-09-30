@@ -2,6 +2,16 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 
+/**
+ * Paramètres d'affichage de l'Administrateur.
+ *
+ * Accès : rôle admin uniquement.
+ * Action POST `action=change_theme` (jeton CSRF requis) : enregistre le
+ * thème choisi, limité à une liste blanche (light, dark, blue, green,
+ * purple, orange), en session et dans utilisateur.themePreference.
+ *
+ * Tables : utilisateur (lecture/écriture de themePreference).
+ */
 requireRole('admin');
 
 $db = new Database();
@@ -35,6 +45,7 @@ $stmt = $conn->prepare("SELECT themePreference FROM utilisateur WHERE idUtilisat
 $stmt->execute([$_SESSION['user_id']]);
 $user = $stmt->fetch();
 
+// Priorité : préférence enregistrée en base, puis session, puis thème clair.
 $current_theme = $user['themePreference'] ?? $_SESSION['theme'] ?? 'light';
 
 require_once 'includes/helpers.php';

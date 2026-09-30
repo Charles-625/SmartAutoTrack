@@ -14,6 +14,7 @@ if (PHP_SAPI !== 'cli') {
 }
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/password_policy.php';
 
 $email = $argv[1] ?? '';
 $arg = $argv[2] ?? null;
@@ -23,13 +24,27 @@ if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     exit(1);
 }
 
+// Verrouillage : une valeur qui n'est pas un hash valide fait toujours
+// échouer password_verify(), donc aucune connexion n'est possible.
 if ($arg === '--lock') {
     $hash = '!COMPTE_VERROUILLE';
     $password = null;
 } else {
-    $password = $arg ?? rtrim(strtr(base64_encode(random_bytes(15)), '+/', '-_'), '=');
+    if ($arg !== null) {
+        $password = $arg;
+    } else {
+        // Tirage jusqu'à obtenir un mot de passe conforme aux règles (quelques essais au plus)
+        do {
+            $password = rtrim(strtr(base64_encode(random_bytes(15)), '+/', '!@'), '=');
+        } while (passwordPolicyMissing($password));
+    }
+    // Exigence CLI (12 caractères minimum) en plus de la politique commune.
     if (strlen($password) < 12) {
         fwrite(STDERR, "Le mot de passe doit contenir au moins 12 caractères.\n");
+        exit(1);
+    }
+    if ($pwError = passwordPolicyError($password)) {
+        fwrite(STDERR, $pwError . "\n");
         exit(1);
     }
     $hash = password_hash($password, PASSWORD_DEFAULT);

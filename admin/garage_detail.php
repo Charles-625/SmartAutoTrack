@@ -4,6 +4,21 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Fiche détaillée d'un garage (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * GET `id` : identifiant du garage ; si absent ou inconnu, redirection vers
+ * garages.php.
+ * Actions POST (jeton CSRF requis) :
+ *   - ?action=validate_document : passe un document EN_ATTENTE à VALIDE ;
+ *   - ?action=reject_document   : le passe à REJETE.
+ * Chaque décision est journalisée et notifiée au compte du garage.
+ *
+ * Tables : garage, utilisateur, documentgarage (lecture/écriture),
+ * technicien, intervention, notifications, journal d'activité.
+ * Liens : garage/parametres.php (dépôt des documents), garages.php.
+ */
 requireRole('admin');
 
 $db = new Database();
@@ -35,6 +50,9 @@ $errors = [];
 $docAction = $_GET['action'] ?? '';
 $postOk = $_SERVER['REQUEST_METHOD'] === 'POST' && verifyCSRFToken($_POST['csrf_token'] ?? '');
 
+// Action : valider ou rejeter un document. La requête filtre sur idGarage
+// et sur le statut EN_ATTENTE : impossible de traiter le document d'un autre
+// garage ou de revenir sur un document déjà vérifié.
 if (($docAction === 'validate_document' || $docAction === 'reject_document') && $postOk) {
     $docId = filter_var($_POST['document_id'] ?? null, FILTER_VALIDATE_INT);
     $newStatut = $docAction === 'validate_document' ? 'VALIDE' : 'REJETE';
@@ -74,6 +92,8 @@ $stmt = $conn->prepare("SELECT idDocument, typeDocument, statutVerification FROM
 $stmt->execute([$garageId]);
 $documents = $stmt->fetchAll();
 
+// Techniciens rattachés au garage, avec leur charge (interventions actives)
+// et leur nombre total d'interventions.
 $stmt = $conn->prepare("
     SELECT u.idUtilisateur AS id, u.nom, u.prenom, t.specialite, t.statutValidation,
            SUM(CASE WHEN i.statut IN ('PLANIFIEE','EN_COURS') THEN 1 ELSE 0 END) AS actives,

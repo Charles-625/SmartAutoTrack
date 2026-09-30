@@ -4,6 +4,19 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace garage — Gestion de l'équipe de techniciens du garage.
+ *
+ * Accès : rôle « garage ».
+ * Actions (POST + jeton CSRF, choisies par GET action=…) :
+ *   - create : créer un compte technicien rattaché au garage, directement VALIDE.
+ *   - suspend / reactivate : passer un technicien de l'équipe de VALIDE à
+ *     SUSPENDU, ou l'inverse.
+ * Tables : utilisateur, technicien, notifications (écriture), intervention
+ *          (lecture), journalactivites (via log_activity()).
+ * Liés : includes/password_policy.php (passwordPolicyError()).
+ */
+
 requireRole('garage');
 
 $db = new Database();
@@ -40,10 +53,11 @@ if ($action === 'create' && $postOk) {
     if (empty($newEmail) || !validateEmail($newEmail)) $errors[] = 'Email invalide.';
     if (empty($newTelephone)) $errors[] = 'Le téléphone est requis.';
     elseif (!validateDigitsOnly($newTelephone)) $errors[] = 'Le téléphone ne doit contenir que des chiffres.';
-    if (strlen($newPassword) < PASSWORD_MIN_LENGTH) $errors[] = 'Le mot de passe doit contenir au moins ' . PASSWORD_MIN_LENGTH . ' caractères.';
+    if ($pwError = passwordPolicyError($newPassword)) $errors[] = $pwError;
     if ($newPassword !== $newPasswordConfirm) $errors[] = 'Les mots de passe ne correspondent pas.';
 
     if (empty($errors)) {
+        // L'email sert d'identifiant de connexion : il doit être unique sur toute la plateforme.
         $stmt = $conn->prepare("SELECT idUtilisateur FROM utilisateur WHERE email = ?");
         $stmt->execute([$newEmail]);
         if ($stmt->fetch()) $errors[] = 'Cet email est déjà utilisé.';
@@ -51,6 +65,7 @@ if ($action === 'create' && $postOk) {
 
     if (empty($errors)) {
         try {
+            // Transaction : le compte utilisateur et la fiche technicien sont créés ensemble ou pas du tout.
             $conn->beginTransaction();
             $conn->prepare("INSERT INTO utilisateur (nom, prenom, email, telephone, motDePasse) VALUES (?, ?, ?, ?, ?)")
                 ->execute([$newNom, $newPrenom, $newEmail, $newTelephone, hashPassword($newPassword)]);
@@ -98,6 +113,8 @@ if (($action === 'suspend' || $action === 'reactivate') && $postOk) {
             $tRow = $stmt->fetch();
             $tLabel = $tRow ? ($tRow['prenom'] . ' ' . $tRow['nom']) : ('technicien #' . $targetId);
 
+            // Le statut de départ attendu fait partie de la condition : rowCount() vaut 0 si le
+            // technicien n'est pas dans l'équipe ou si son statut a déjà changé.
             $upd = $conn->prepare("UPDATE technicien SET statutValidation = ? WHERE idTechnicien = ? AND idGarage = ? AND statutValidation = ?");
             $upd->execute([$toStatut, $targetId, $garageId, $fromStatut]);
 
@@ -141,6 +158,7 @@ $stmt = $conn->prepare("
 $stmt->execute([$garageId]);
 $techniciens = $stmt->fetchAll();
 
+// Compteur du badge « Demandes d'intervention » de la sidebar.
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idGarage = ? AND idTechnicien IS NULL AND statut = 'PLANIFIEE'");
 $stmt->execute([$garageId]);
 $demandesEnAttente = (int)$stmt->fetchColumn();
@@ -241,15 +259,15 @@ include '../includes/header.php';
         <form method="POST" action="techniciens.php?action=create">
             <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
             <div class="gv2-form-row">
-                <div class="gv2-form-group"><label>Nom</label><input type="text" name="nom" required></div>
-                <div class="gv2-form-group"><label>Prénom</label><input type="text" name="prenom" required></div>
+                <div class="gv2-form-group"><label>Nom</label><input type="text" name="nom" data-only="letters" required placeholder="Ex. Mbarga"></div>
+                <div class="gv2-form-group"><label>Prénom</label><input type="text" name="prenom" data-only="letters" required placeholder="Ex. Jean"></div>
             </div>
-            <div class="gv2-form-group"><label>Email</label><input type="email" name="email" required></div>
-            <div class="gv2-form-group"><label>Téléphone</label><input type="tel" name="telephone" required></div>
-            <div class="gv2-form-group"><label>Spécialité</label><input type="text" name="specialite" placeholder="Ex. : Freinage, Moteur & diagnostic... (optionnel)"></div>
+            <div class="gv2-form-group"><label>Email</label><input type="email" name="email" required placeholder="exemple@gmail.com"></div>
+            <div class="gv2-form-group"><label>Téléphone</label><input type="tel" name="telephone" data-only="digits" inputmode="numeric" maxlength="15" required placeholder="Ex. 677123456"></div>
+            <div class="gv2-form-group"><label>Spécialité</label><input type="text" name="specialite" placeholder="Ex. Électricité automobile"></div>
             <div class="gv2-form-row">
-                <div class="gv2-form-group"><label>Mot de passe</label><input type="password" name="mot_de_passe" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>"></div>
-                <div class="gv2-form-group"><label>Confirmation</label><input type="password" name="confirmation" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>"></div>
+                <div class="gv2-form-group"><label>Mot de passe</label><input type="password" name="mot_de_passe" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>" data-password-policy autocomplete="new-password" placeholder="<?php echo PASSWORD_MIN_LENGTH; ?> caractères minimum"></div>
+                <div class="gv2-form-group"><label>Confirmation</label><input type="password" name="confirmation" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>" placeholder="Retapez le mot de passe"></div>
             </div>
             <div class="gv2-modal-actions">
                 <button type="button" class="gv2-btn-outline" id="closeNewTechnicien">Annuler</button>

@@ -4,6 +4,23 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Liste et gestion des garages partenaires (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * Actions POST (jeton CSRF requis), passées par ?action=… :
+ *   - create_garage : crée le compte utilisateur + le garage, directement VALIDE ;
+ *   - validate / reject : passe le garage à VALIDE / REJETE (?id=N) ; prévu
+ *     pour les inscriptions EN_ATTENTE, mais la requête ne vérifie pas le
+ *     statut actuel ;
+ *   - suspend / reactivate : bascule VALIDE <-> SUSPENDU (?id=N).
+ * Filtre GET `status` (actif|pending|rejete|suspendu).
+ *
+ * Tables : garage, utilisateur (écriture), technicien, intervention
+ * (compteurs), notifications, journal d'activité.
+ * Liens : garage_detail.php, config/config.php (validations),
+ * includes/password_policy.php (passwordPolicyError).
+ */
 requireRole('admin');
 
 $db = new Database();
@@ -17,6 +34,17 @@ $action = $_GET['action'] ?? '';
 $garage_id = $_GET['id'] ?? null;
 $errors = [];
 
+/**
+ * Journalise une décision de l'admin sur un garage et prévient son compte.
+ *
+ * @param PDO        $conn         Connexion à la base.
+ * @param int|string $garage_id    Identifiant du garage concerné.
+ * @param string     $nomActivite  Libellé de l'activité pour le journal.
+ * @param string     $notifTitre   Titre de la notification envoyée au garage.
+ * @param string     $notifMessage Texte de la notification.
+ * @return void Écrit dans le journal d'activité et, si le garage a un compte
+ *              utilisateur, insère une ligne dans notifications.
+ */
 function garage_notify_and_log(PDO $conn, $garage_id, string $nomActivite, string $notifTitre, string $notifMessage): void {
     $stmt = $conn->prepare("SELECT idUtilisateur, nomGarage FROM garage WHERE idGarage = ?");
     $stmt->execute([$garage_id]);
@@ -65,10 +93,11 @@ if ($action === 'create_garage' && $postOk) {
     if (empty($newEmail) || !validateEmail($newEmail)) $errors[] = 'Email invalide.';
     if (empty($newTelephone)) $errors[] = 'Le téléphone est requis.';
     elseif (!validateDigitsOnly($newTelephone)) $errors[] = 'Le téléphone ne doit contenir que des chiffres.';
-    if (strlen($newPassword) < PASSWORD_MIN_LENGTH) $errors[] = 'Le mot de passe doit contenir au moins ' . PASSWORD_MIN_LENGTH . ' caractères.';
+    if ($pwError = passwordPolicyError($newPassword)) $errors[] = $pwError;
     if ($newPassword !== $newPasswordConfirm) $errors[] = 'Les mots de passe ne correspondent pas.';
 
     if (empty($errors)) {
+        // Unicité de l'email vérifiée avant la transaction, pour un message clair.
         $stmt = $conn->prepare("SELECT idUtilisateur FROM utilisateur WHERE email = ?");
         $stmt->execute([$newEmail]);
         if ($stmt->fetch()) $errors[] = 'Cet email est déjà utilisé.';
@@ -76,6 +105,7 @@ if ($action === 'create_garage' && $postOk) {
 
     if (empty($errors)) {
         try {
+            // Transaction : l'utilisateur et le garage sont créés ensemble ou pas du tout.
             $conn->beginTransaction();
             $conn->prepare("INSERT INTO utilisateur (nom, prenom, email, telephone, motDePasse) VALUES (?, ?, ?, ?, ?)")
                 ->execute([$newNom, $newPrenom, $newEmail, $newTelephone, hashPassword($newPassword)]);
@@ -104,6 +134,7 @@ if ($action === 'create_garage' && $postOk) {
     }
 }
 
+// Action : valider une inscription de garage.
 if ($action === 'validate' && $garage_id && $postOk) {
     try {
         $conn->prepare("UPDATE garage SET statutGarage = 'VALIDE' WHERE idGarage = ?")->execute([$garage_id]);
@@ -115,6 +146,7 @@ if ($action === 'validate' && $garage_id && $postOk) {
     }
 }
 
+// Action : rejeter une inscription de garage.
 if ($action === 'reject' && $garage_id && $postOk) {
     try {
         $conn->prepare("UPDATE garage SET statutGarage = 'REJETE' WHERE idGarage = ?")->execute([$garage_id]);
@@ -141,6 +173,8 @@ if ($action === 'suspend' && $garage_id && $postOk) {
     }
 }
 
+// Action : réactiver un garage suspendu (la condition SUSPENDU empêche de
+// valider par ce biais un garage rejeté ou en attente).
 if ($action === 'reactivate' && $garage_id && $postOk) {
     try {
         $conn->prepare("UPDATE garage SET statutGarage = 'VALIDE' WHERE idGarage = ? AND statutGarage = 'SUSPENDU'")->execute([$garage_id]);
@@ -154,6 +188,7 @@ if ($action === 'reactivate' && $garage_id && $postOk) {
 
 // Filtres
 $status_filter = $_GET['status'] ?? '';
+// Correspondance entre les valeurs du filtre dans l'URL et l'ENUM statutGarage.
 $statusToDb = ['actif' => 'VALIDE', 'pending' => 'EN_ATTENTE', 'rejete' => 'REJETE', 'suspendu' => 'SUSPENDU'];
 $where = [];
 $params = [];
@@ -317,15 +352,15 @@ include '../includes/header.php';
         <?php if (!empty($errors)): ?><div class="av2-alert error"><?php foreach ($errors as $e) echo h($e) . '<br>'; ?></div><?php endif; ?>
         <form method="POST" action="garages.php?action=create_garage">
             <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-            <div class="av2-form-group"><label>Nom du garage</label><input type="text" name="nom_garage" required placeholder="Ex. : Garage Nord Auto"></div>
-            <div class="av2-form-group"><label>Adresse</label><input type="text" name="adresse" placeholder="Optionnel"></div>
+            <div class="av2-form-group"><label>Nom du garage</label><input type="text" name="nom_garage" required placeholder="Ex. Garage Central Yaoundé"></div>
+            <div class="av2-form-group"><label>Adresse</label><input type="text" name="adresse" placeholder="Ex. Rue 1.234, Bastos, Yaoundé"></div>
             <p class="av2-modal-sub" style="margin-top:18px;">Compte de connexion du garage</p>
-            <div class="av2-form-group"><label>Nom du contact</label><input type="text" name="nom" required></div>
-            <div class="av2-form-group"><label>Prénom du contact</label><input type="text" name="prenom" required></div>
-            <div class="av2-form-group"><label>Email</label><input type="email" name="email" required></div>
-            <div class="av2-form-group"><label>Téléphone</label><input type="tel" name="telephone" required></div>
-            <div class="av2-form-group"><label>Mot de passe</label><input type="password" name="mot_de_passe" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>"></div>
-            <div class="av2-form-group"><label>Confirmation</label><input type="password" name="confirmation" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>"></div>
+            <div class="av2-form-group"><label>Nom du contact</label><input type="text" name="nom" data-only="letters" required placeholder="Ex. Mbarga"></div>
+            <div class="av2-form-group"><label>Prénom du contact</label><input type="text" name="prenom" data-only="letters" required placeholder="Ex. Jean"></div>
+            <div class="av2-form-group"><label>Email</label><input type="email" name="email" required placeholder="exemple@gmail.com"></div>
+            <div class="av2-form-group"><label>Téléphone</label><input type="tel" name="telephone" data-only="digits" inputmode="numeric" maxlength="15" required placeholder="Ex. 677123456"></div>
+            <div class="av2-form-group"><label>Mot de passe</label><input type="password" name="mot_de_passe" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>" data-password-policy autocomplete="new-password" placeholder="<?php echo PASSWORD_MIN_LENGTH; ?> caractères minimum"></div>
+            <div class="av2-form-group"><label>Confirmation</label><input type="password" name="confirmation" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>" placeholder="Retapez le mot de passe"></div>
             <div class="av2-modal-actions">
                 <button type="button" class="av2-btn-outline" id="closeNewGarage">Annuler</button>
                 <button type="submit" class="av2-btn-primary">Créer le garage</button>

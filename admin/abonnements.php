@@ -4,6 +4,17 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Supervision des abonnements clients (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement (requireRole).
+ * Lecture seule : aucune action POST. Filtres GET `search` (nom, prénom,
+ * raison sociale) et `type` (particulier|entreprise).
+ *
+ * Tables lues : utilisateur, client, entreprise, vehicule (taille de flotte).
+ * Liens : client/abonnement.php (seule formule existante, « Gratuit »),
+ * admin/includes/sidebar.php.
+ */
 requireRole('admin');
 
 $db = new Database();
@@ -19,6 +30,8 @@ $conn = $db->getConnection();
 $search = $_GET['search'] ?? '';
 $typeFilter = $_GET['type'] ?? '';
 
+// Construction dynamique du WHERE : seules des conditions fixes sont
+// concaténées, les valeurs saisies passent toujours par des paramètres liés.
 $where = [];
 $params = [];
 if ($search) {
@@ -92,7 +105,7 @@ include '../includes/header.php';
         <form method="GET" class="av2-filterbar">
             <div class="av2-filterbar-search">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#8B90B3" stroke-width="1.8"/><path d="M21 21L16.5 16.5" stroke="#8B90B3" stroke-width="1.8" stroke-linecap="round"/></svg>
-                <input type="text" name="search" placeholder="Nom, raison sociale..." value="<?php echo h($search); ?>">
+                <input type="text" name="search" placeholder="Rechercher par nom, prénom, raison sociale…" value="<?php echo h($search); ?>">
             </div>
             <select name="type" onchange="this.form.submit()">
                 <option value="">Tous les types</option>

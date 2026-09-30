@@ -3,14 +3,27 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 
+/**
+ * Fiche détaillée d'un véhicule du client.
+ *
+ * Accès : rôle client uniquement, et seulement pour ses propres véhicules :
+ * un id absent ou appartenant à un autre client renvoie vers vehicles.php.
+ * GET : id (identifiant du véhicule, obligatoire).
+ * Lecture seule : les détails d'une anomalie ou d'une réparation sont chargés
+ * en AJAX (ajax/get_anomaly_details.php, ajax/get_reparation_details.php).
+ * Tables lues : vehicule, anomalie, reparation, intervention, utilisateur.
+ */
 requireRole('client');
 
 $db = new Database();
 $conn = $db->getConnection();
 
+// Profil du client connecté : le type (PARTICULIER/ENTREPRISE) règle les
+// libellés et la variante de la sidebar.
 $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $clientRoleLabel = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE') ? 'Client entreprise' : 'Client particulier';
 $isEntreprise = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
+// Badge de la sidebar : interventions actives (planifiées ou en cours) du client.
 $stmtBadge = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idClient = ? AND statut IN ('PLANIFIEE', 'EN_COURS')");
 $stmtBadge->execute([$_SESSION['user_id']]);
 $interventionsActivesCount = (int)$stmtBadge->fetchColumn();
@@ -38,6 +51,8 @@ if (!$vehicle) {
     exit;
 }
 
+// La propriété du véhicule est vérifiée ci-dessus : les requêtes suivantes
+// peuvent filtrer sur son seul identifiant.
 // Récupérer les anomalies du véhicule
 $stmt = $conn->prepare("
     SELECT idAnomalie AS id, description, dateDetection AS date_detection, dateResolution AS date_resolution,

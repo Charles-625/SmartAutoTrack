@@ -3,19 +3,32 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 
+/**
+ * Page "Abonnement" de l'espace client (particulier ou entreprise).
+ *
+ * Accès : rôle client uniquement (requireRole('client')).
+ * Page informative en lecture seule : aucune action POST/GET n'est traitée.
+ * Tables lues : intervention (badge sidebar), vehicule (taille du parc).
+ * Fichiers liés : client/includes/sidebar.php, includes/header.php,
+ * assets/css/client_v2.css.
+ */
 requireRole('client');
 
 $db = new Database();
 $conn = $db->getConnection();
 
+// Profil du client connecté : le type (PARTICULIER/ENTREPRISE) règle les
+// libellés et la variante de la sidebar.
 $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $clientRoleLabel = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE') ? 'Client entreprise' : 'Client particulier';
 $isEntreprise = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
 
+// Badge de la sidebar : interventions actives (planifiées ou en cours) du client.
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idClient = ? AND statut IN ('PLANIFIEE', 'EN_COURS')");
 $stmt->execute([$_SESSION['user_id']]);
 $interventionsActivesCount = (int)$stmt->fetchColumn();
 
+// Nombre de véhicules suivis par le client (taille du parc).
 $stmt = $conn->prepare("SELECT COUNT(*) FROM vehicule WHERE idClient = ?");
 $stmt->execute([$_SESSION['user_id']]);
 $fleetSize = (int)$stmt->fetchColumn();

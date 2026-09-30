@@ -2,6 +2,14 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 
+/**
+ * Endpoint AJAX (JSON) : fiche d'un technicien (compétences, expérience,
+ * statut de validation), pour l'administration.
+ *
+ * Accès : admin uniquement.
+ * GET : id (identifiant utilisateur du technicien).
+ * Tables lues : utilisateur, technicien.
+ */
 header('Content-Type: application/json');
 
 requireJsonAuth('admin');

@@ -2,6 +2,13 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 
+/**
+ * Endpoint AJAX (JSON) : nombre de messages non lus de l'utilisateur
+ * connecté, pour le badge de la barre de navigation (assets/js/main.js).
+ *
+ * Accès : tout utilisateur connecté.
+ * Table lue : messages.
+ */
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {

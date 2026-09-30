@@ -4,6 +4,19 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace garage — Tableau de bord.
+ *
+ * Accès : rôle « garage ».
+ * Page en lecture seule : cartes statistiques, donut des interventions par
+ * statut, tendance sur 7 jours, demandes non affectées, charge de travail
+ * des techniciens et nombre de messages non lus. Toutes les requêtes sont
+ * bornées au garage connecté (idGarage issu de son profil).
+ * Tables lues : intervention, reparation, technicien, utilisateur, messages.
+ * Liés : garage/includes/helpers.php (gv2_donut_svg, gv2_trend_svg),
+ *        garage/includes/sidebar.php.
+ */
+
 requireRole('garage');
 
 $db = new Database();
@@ -13,6 +26,7 @@ $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $garageId = (int)($profile['idGarage'] ?? 0);
 $garageNom = $profile['nomGarage'] ?? 'Garage';
 
+// Heure MySQL : les durées relatives (v2_relative) sont calculées sur la même horloge que les dates stockées.
 $dbNow = $conn->query('SELECT NOW()')->fetchColumn();
 
 // ============================================================
@@ -72,6 +86,7 @@ $stmt->execute([$garageId]);
 $trendRows = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
 $trendValues = [];
 $trendLabels = [];
+// 7 points exactement : un jour sans intervention vaut 0.
 for ($i = 6; $i >= 0; $i--) {
     $day = date('Y-m-d', strtotime("-$i day"));
     $trendValues[] = (int)($trendRows[$day] ?? 0);

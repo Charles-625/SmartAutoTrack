@@ -3,6 +3,15 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 
+/**
+ * Endpoint AJAX (JSON) : charge la conversation entre l'utilisateur connecté
+ * et un contact, puis marque comme lus les messages reçus de ce contact.
+ * Appelé depuis messages/index.php.
+ *
+ * Accès : tout utilisateur connecté.
+ * GET : contact_id (identifiant utilisateur de l'interlocuteur).
+ * Tables : utilisateur (lecture), messages (lecture et mise à jour de lu).
+ */
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {

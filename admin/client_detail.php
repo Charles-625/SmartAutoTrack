@@ -4,6 +4,16 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Fiche détaillée d'un client (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * GET `id` : identifiant du client ; si absent ou inconnu, redirection vers
+ * clients.php. Lecture seule, aucune action POST.
+ *
+ * Tables lues : utilisateur, client, entreprise, particulier, vehicule,
+ * intervention (10 dernières), garage, anomalie (actives).
+ */
 requireRole('admin');
 
 $db = new Database();
@@ -12,6 +22,8 @@ $conn = $db->getConnection();
 $clientId = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT);
 if (!$clientId) { header('Location: clients.php'); exit; }
 
+// Profil + infos spécifiques au type : l'adresse est portée par la table
+// entreprise ou particulier selon typeClient.
 $stmt = $conn->prepare("
     SELECT u.idUtilisateur AS id, u.nom, u.prenom, u.email, u.telephone, u.dateCreation AS created_at,
            c.typeClient, e.raisonSociale, e.adresse AS entreprise_adresse, p.adresse AS particulier_adresse
@@ -26,6 +38,8 @@ $client = $stmt->fetch();
 if (!$client) { header('Location: clients.php'); exit; }
 $isEnt = $client['typeClient'] === 'ENTREPRISE';
 
+// L'état ENUM de la base est converti en code de statut en minuscules,
+// comme attendu par les badges d'affichage.
 $stmt = $conn->prepare("
     SELECT idVehicule AS id, marque, modele, immatriculation, kilometrage, annee,
            CASE etat WHEN 'EN_PANNE' THEN 'en_panne' WHEN 'EN_ENTRETIEN' THEN 'en_entretien' WHEN 'HORS_SERVICE' THEN 'hors_service' ELSE 'actif' END AS statut

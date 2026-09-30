@@ -4,6 +4,20 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Liste et gestion des comptes clients (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * Actions :
+ *   - POST ?action=delete&id=N (jeton CSRF requis) : supprime le client et
+ *     ses paiements, interventions et véhicules, dans une transaction, puis
+ *     l'inscrit au journal d'activité ;
+ *   - GET `search` / `type` : filtres de la liste.
+ *
+ * Tables : utilisateur, client, entreprise, vehicule, anomalie (lecture),
+ * paiement/intervention/vehicule/utilisateur (suppression).
+ * Liens : client_detail.php, includes/activity_log.php (log_activity).
+ */
 requireRole('admin');
 
 $db = new Database();
@@ -20,6 +34,7 @@ $errors = [];
 $postOk = $_SERVER['REQUEST_METHOD'] === 'POST' && verifyCSRFToken($_POST['csrf_token'] ?? '');
 if ($action === 'delete' && $client_id && $postOk) {
     try {
+        // Identité lue avant suppression, pour pouvoir la citer dans le journal.
         $stmt = $conn->prepare('SELECT nom, prenom, email FROM utilisateur WHERE idUtilisateur = ?');
         $stmt->execute([$client_id]);
         $deletedClient = $stmt->fetch();
@@ -134,7 +149,7 @@ include '../includes/header.php';
         <form method="GET" class="av2-filterbar">
             <div class="av2-filterbar-search">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#8B90B3" stroke-width="1.8"/><path d="M21 21L16.5 16.5" stroke="#8B90B3" stroke-width="1.8" stroke-linecap="round"/></svg>
-                <input type="text" name="search" placeholder="Nom, raison sociale, email..." value="<?php echo h($search); ?>">
+                <input type="text" name="search" placeholder="Rechercher par nom, prénom, email, raison sociale…" value="<?php echo h($search); ?>">
             </div>
             <select name="type" onchange="this.form.submit()">
                 <option value="">Tous les types</option>

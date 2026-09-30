@@ -4,12 +4,21 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace technicien — Mon journal d'activité.
+ *
+ * Accès : rôle « technicien ».
+ * Page en lecture seule. Filtres GET : categorie, date_from, date_to.
+ * Table lue : journalactivites, uniquement via activity_log_fetch().
+ */
+
 requireRole('technicien');
 
 $db = new Database();
 $conn = $db->getConnection();
 $selfId = (int)$_SESSION['user_id'];
 
+// Heure MySQL : les durées relatives (v2_relative) sont calculées sur la même horloge que les dates stockées.
 $dbNow = $conn->query('SELECT NOW()')->fetchColumn();
 
 // Le technicien ne voit que ses propres activités : ses propres actions, ses
@@ -33,10 +42,12 @@ $journal = activity_log_fetch($conn, 'technicien', $selfId, [], [
     'date_to' => $dateTo ?: null,
 ]);
 
+// Compteur du badge « Mes tâches » de la sidebar (tâches à démarrer).
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idTechnicien = ? AND statut = 'PLANIFIEE'");
 $stmt->execute([$selfId]);
 $tachesADemarrer = (int)$stmt->fetchColumn();
 
+// Couleurs de l'icône et libellé affichés pour chaque catégorie du journal.
 $icons = [
     'intervention' => ['bg' => '#E7F3FC', 'color' => '#1E7DBF'],
     'reparation' => ['bg' => '#E4F7EE', 'color' => '#1E8A5A'],

@@ -1,6 +1,12 @@
 <?php
 require_once 'config/config.php';
 
+/**
+ * Aiguillage du lien « Paramètres » du menu utilisateur vers la page de
+ * paramètres propre au rôle connecté (les noms de fichiers diffèrent selon
+ * l'espace : settings.php ou parametres.php). Sans session : connexion.
+ */
+
 // Rediriger vers la page de paramètres appropriée selon le rôle
 if (isset($_SESSION['role'])) {
     switch ($_SESSION['role']) {

@@ -3,15 +3,29 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 
+/**
+ * Liste des anomalies des véhicules du client (espace client "v2").
+ *
+ * Accès : rôle client uniquement. Consultation seule : le client ne crée ni ne
+ * modifie jamais d'anomalie, elles proviennent des constats technicien/garage.
+ * GET : statut ('active' | 'resolue'), niveau ('FAIBLE' | 'MOYEN' | 'CRITIQUE'),
+ *       vehicle (id d'un véhicule du client).
+ * Tables lues : anomalie, vehicule, intervention, garage.
+ * Cloisonnement : toutes les requêtes filtrent sur v.idClient = client connecté.
+ * Fichiers liés : client/includes/sidebar.php, includes/header.php.
+ */
 requireRole('client');
 
 $db = new Database();
 $conn = $db->getConnection();
 
+// Profil du client connecté : le type (PARTICULIER/ENTREPRISE) règle les
+// libellés et la variante de la sidebar.
 $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $clientRoleLabel = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE') ? 'Client entreprise' : 'Client particulier';
 $isEntreprise = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
 
+// Badge de la sidebar : interventions actives (planifiées ou en cours) du client.
 $stmtBadge = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idClient = ? AND statut IN ('PLANIFIEE', 'EN_COURS')");
 $stmtBadge->execute([$_SESSION['user_id']]);
 $interventionsActivesCount = (int)$stmtBadge->fetchColumn();
@@ -28,6 +42,8 @@ $statutFilter = $_GET['statut'] ?? '';
 $niveauFilter = $_GET['niveau'] ?? '';
 $vehicleFilter = filter_var($_GET['vehicle'] ?? null, FILTER_VALIDATE_INT);
 
+// Clause WHERE construite dynamiquement : seules des conditions fixes (liste
+// blanche) sont ajoutées, les valeurs passent par des placeholders.
 $where = ['v.idClient = ?'];
 $params = [$_SESSION['user_id']];
 

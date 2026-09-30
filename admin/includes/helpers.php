@@ -11,6 +11,7 @@ if (!function_exists('av2_status_badge')) {
     function av2_status_badge(string $statut): string {
         return ['VALIDE' => 'ok', 'EN_ATTENTE' => 'warn', 'REJETE' => 'bad', 'SUSPENDU' => 'neutral'][$statut] ?? 'neutral';
     }
+    /** Libellé français d'un statut garage/technicien (repli : le code mis en forme). */
     function av2_status_label(string $statut): string {
         return ['VALIDE' => 'Validé', 'EN_ATTENTE' => 'En attente', 'REJETE' => 'Rejeté', 'SUSPENDU' => 'Suspendu'][$statut] ?? ucfirst(strtolower($statut));
     }
@@ -30,6 +31,9 @@ if (!function_exists('admin_reassign_garage')) {
      * technicien était déjà affecté (par l'ancien garage), il est remis à
      * NULL : il n'appartient pas forcément au nouveau garage.
      *
+     * @param PDO $conn           Connexion à la base.
+     * @param int $interventionId Intervention à (ré)affecter.
+     * @param int $newGarageId    Garage cible, qui doit être VALIDE.
      * @return string|null null si succès, sinon un message d'erreur à afficher.
      */
     function admin_reassign_garage(PDO $conn, int $interventionId, int $newGarageId): ?string {
@@ -55,9 +59,13 @@ if (!function_exists('admin_reassign_garage')) {
             return 'Ce garage est déjà celui affecté à cette intervention.';
         }
 
+        // Réaffectation si un garage était déjà affecté : le libellé du journal et
+        // les messages de notification diffèrent d'une première affectation.
         $isReassignment = ($iv['idGarage'] !== null);
         $hadTechnicien = ($iv['idTechnicien'] !== null);
 
+        // Retour à PLANIFIEE : une demande ANNULEE (refusée) redevient visible pour
+        // le nouveau garage.
         $conn->prepare("UPDATE intervention SET idGarage = ?, idTechnicien = NULL, statut = 'PLANIFIEE' WHERE idIntervention = ?")
             ->execute([$newGarageId, $interventionId]);
 
@@ -77,6 +85,8 @@ if (!function_exists('admin_reassign_garage')) {
             'categorie' => 'intervention',
         ]);
 
+        // Notifications : le client dans tous les cas, le garage seulement s'il a
+        // un compte utilisateur.
         $clientMsg = $isReassignment
             ? 'Le garage affecté à votre demande d\'intervention (' . $iv['type'] . ') a changé : elle est désormais prise en charge par ' . $garage['nomGarage'] . '.'
             : 'Votre demande d\'intervention (' . $iv['type'] . ') a été transmise à ' . $garage['nomGarage'] . '.';
@@ -105,6 +115,8 @@ if (!function_exists('av2_donut_svg')) {
         $circumference = 2 * M_PI * $r;
         $svg = '<svg class="av2-donut" width="' . $size . '" height="' . $size . '" viewBox="0 0 ' . $size . ' ' . $size . '">';
         $svg .= '<circle cx="' . $cx . '" cy="' . $cy . '" r="' . $r . '" fill="none" stroke="#EFF0F6" stroke-width="' . $stroke . '"/>';
+        // Chaque segment est un cercle en pointillé (stroke-dasharray) tourné pour
+        // démarrer là où le précédent s'arrête ; départ en haut (-90°).
         if ($total > 0) {
             $offset = 0;
             foreach ($segments as $seg) {
@@ -129,6 +141,7 @@ if (!function_exists('av2_trend_svg')) {
     function av2_trend_svg(array $values, int $width = 320, int $height = 90, string $color = '#3956E8'): string {
         $count = count($values);
         if ($count === 0) return '';
+        // max(1, …) évite une division par zéro quand toutes les valeurs sont nulles.
         $max = max(1, max($values));
         $stepX = $count > 1 ? $width / ($count - 1) : $width;
         $points = [];
@@ -139,6 +152,8 @@ if (!function_exists('av2_trend_svg')) {
         }
         $linePath = 'M ' . implode(' L ', array_map(fn($p) => $p[0] . ' ' . $p[1], $points));
         $areaPath = $linePath . " L {$width} {$height} L 0 {$height} Z";
+        // Identifiant de dégradé dérivé des valeurs, pour éviter une collision si
+        // plusieurs courbes sont affichées sur la même page.
         $id = 'av2trend' . substr(md5(json_encode($values)), 0, 6);
         $svg = '<svg class="av2-trend-svg" viewBox="0 0 ' . $width . ' ' . $height . '" preserveAspectRatio="none">';
         $svg .= '<defs><linearGradient id="' . $id . '" x1="0" y1="0" x2="0" y2="1">'

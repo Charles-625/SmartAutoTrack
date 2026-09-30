@@ -2,6 +2,14 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 
+/**
+ * Endpoint AJAX (JSON) : 10 dernières notifications de l'utilisateur
+ * connecté et nombre de notifications non lues, pour le menu déroulant
+ * de la barre de navigation (assets/js/main.js).
+ *
+ * Accès : tout utilisateur connecté.
+ * Table lue : notifications.
+ */
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {

@@ -4,6 +4,19 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace garage — Liste de toutes les interventions du garage.
+ *
+ * Accès : rôle « garage ».
+ * Actions :
+ *   - POST form=start : démarrer une intervention PLANIFIEE déjà affectée
+ *     (passage à EN_COURS) et la journaliser.
+ *   - GET statut, date, technicien, vehicule : filtres de la liste.
+ * Tables : intervention (écriture), vehicule, utilisateur, technicien (lecture),
+ *          journalactivites (via garage_log()).
+ * Liés : garage/vehicule.php (fiche véhicule), garage/reparations.php (clôture).
+ */
+
 requireRole('garage');
 
 $db = new Database();
@@ -18,6 +31,7 @@ $garageId = (int)($profile['idGarage'] ?? 0);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'start') {
     if (verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $interventionId = filter_var($_POST['intervention_id'] ?? null, FILTER_VALIDATE_INT);
+        // Seule une intervention PLANIFIEE de CE garage, déjà affectée à un technicien, peut démarrer.
         $stmt = $conn->prepare("SELECT idTechnicien FROM intervention WHERE idIntervention = ? AND idGarage = ? AND statut = 'PLANIFIEE' AND idTechnicien IS NOT NULL");
         $stmt->execute([$interventionId, $garageId]);
         $iv = $stmt->fetch();
@@ -76,10 +90,12 @@ $stmt = $conn->prepare("SELECT DISTINCT v.idVehicule AS id, v.marque, v.modele, 
 $stmt->execute([$garageId]);
 $vehiculesGarage = $stmt->fetchAll();
 
+// Compteur du badge « Demandes d'intervention » de la sidebar.
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idGarage = ? AND idTechnicien IS NULL AND statut = 'PLANIFIEE'");
 $stmt->execute([$garageId]);
 $demandesEnAttente = (int)$stmt->fetchColumn();
 
+// Étape de la frise de progression (1 à 3) affichée pour chaque intervention.
 $steps = ['PLANIFIEE' => 1, 'EN_COURS' => 2, 'TERMINEE' => 3];
 
 $pageTitle = 'Interventions';

@@ -61,6 +61,7 @@ body.authv2 { background: var(--auth-bg); margin: 0; }
 
 .authv2-field { margin-bottom: 18px; }
 .authv2-field label { display: block; font-size: 13.5px; font-weight: 700; color: var(--auth-text); margin-bottom: 6px; }
+.authv2-required { color: #E03131; margin-left: 2px; }
 .authv2-input-wrap { position: relative; }
 .authv2-input-wrap .authv2-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--auth-text-light); font-size: 14px; pointer-events: none; }
 .authv2-input-wrap input { width: 100%; box-sizing: border-box; border: 1px solid var(--auth-border); border-radius: 11px; padding: 12px 14px 12px 40px; font-size: 14.5px; font-family: inherit; color: var(--auth-text); background: #FFFFFF; transition: border-color 0.15s ease; }

@@ -4,12 +4,23 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace technicien — Mon historique : interventions terminées ou annulées,
+ * réparations enregistrées et anomalies constatées.
+ *
+ * Accès : rôle « technicien ».
+ * Page en lecture seule. Filtre GET optionnel date_from / date_to (Y-m-d) ;
+ * chaque liste est limitée aux 100 éléments les plus récents.
+ * Tables lues : intervention, reparation, anomalie, vehicule, utilisateur.
+ */
+
 requireRole('technicien');
 
 $db = new Database();
 $conn = $db->getConnection();
 $selfId = (int)$_SESSION['user_id'];
 
+// Période optionnelle : une date mal formée est ignorée (pas de filtre).
 $dateFrom = $_GET['date_from'] ?? '';
 $dateTo = $_GET['date_to'] ?? '';
 $dateFromObj = DateTime::createFromFormat('Y-m-d', $dateFrom) ?: null;
@@ -69,6 +80,7 @@ $stmt = $conn->prepare("
 $stmt->execute($params3);
 $anomaliesHisto = $stmt->fetchAll();
 
+// Compteur du badge « Mes tâches » de la sidebar (tâches à démarrer).
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idTechnicien = ? AND statut = 'PLANIFIEE'");
 $stmt->execute([$selfId]);
 $tachesADemarrer = (int)$stmt->fetchColumn();

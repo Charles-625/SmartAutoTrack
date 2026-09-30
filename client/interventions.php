@@ -4,11 +4,27 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Interventions du client : liste, filtres et demande d'une nouvelle intervention.
+ *
+ * Accès : rôle client uniquement.
+ * POST form=request_intervention (jeton CSRF requis) : crée une intervention
+ *   pour un véhicule du client auprès d'un garage VALIDE, journalise
+ *   l'événement et notifie les administrateurs et le garage choisi.
+ * GET : status ('demandee' | 'planifiee' | 'en_cours' | 'terminee' | 'annulee'),
+ *       vehicle (id d'un véhicule du client), success (message après redirection).
+ * Tables lues : intervention, vehicule, garage, utilisateur.
+ * Tables écrites : intervention, notifications, journal d'activité (log_activity()).
+ * Fichiers liés : client/includes/helpers.php (v2_recommend_garages, v2_relative),
+ * admin/interventions.php (supervision et réaffectation).
+ */
 requireRole('client');
 
 $db = new Database();
 $conn = $db->getConnection();
 
+// Profil du client connecté : le type (PARTICULIER/ENTREPRISE) règle les
+// libellés et la variante de la sidebar.
 $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $clientRoleLabel = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE') ? 'Client entreprise' : 'Client particulier';
 $isEntreprise = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
@@ -40,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'request
         elseif (mb_strlen($reqDescription) > 2000) $requestErrors[] = 'Description trop longue (2000 caractères maximum).';
         if (!$reqGarageId) $requestErrors[] = 'Merci de choisir un garage partenaire.';
 
+        // Contrôle de propriété : le véhicule doit appartenir au client connecté.
         if (empty($requestErrors)) {
             $stmt = $conn->prepare("SELECT idVehicule FROM vehicule WHERE idVehicule = ? AND idClient = ?");
             $stmt->execute([$reqVehiculeId, $_SESSION['user_id']]);
@@ -60,6 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'request
             }
         }
 
+        // Création de la demande ; statut et date prennent les valeurs par défaut de la table.
         if (empty($requestErrors)) {
             $stmt = $conn->prepare("INSERT INTO intervention (idClient, idVehicule, idGarage, type, description) VALUES (?, ?, ?, ?, ?)");
             $stmt->execute([$_SESSION['user_id'], $reqVehiculeId, $chosenGarage['idGarage'], $reqType, $reqDescription]);
@@ -112,6 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'request
                     ->execute([$chosenGarage['idUtilisateur'], trim($_SESSION['prenom'] . ' ' . $_SESSION['nom']) . ' vous a choisi pour une intervention (' . $reqType . ').']);
             }
 
+            // Redirection après POST : un rechargement ne renvoie pas la demande.
             header('Location: interventions.php?success=intervention_requested');
             exit;
         }
@@ -133,6 +152,8 @@ $vehicules = $stmt->fetchAll();
 // véhicules — surtout pour un parc entreprise, mais fonctionne pour tous).
 $statusFilter = $_GET['status'] ?? '';
 $vehicleFilter = filter_var($_GET['vehicle'] ?? null, FILTER_VALIDATE_INT);
+// Chaque filtre de statut correspond à une condition SQL fixe (liste blanche) ;
+// 'demandee' et 'planifiee' se distinguent par la présence d'une affectation.
 $statusConditions = [
     'demandee'  => "i.statut = 'PLANIFIEE' AND i.idTechnicien IS NULL AND i.idGarage IS NULL",
     'planifiee' => "i.statut = 'PLANIFIEE' AND (i.idTechnicien IS NOT NULL OR i.idGarage IS NOT NULL)",
@@ -192,6 +213,12 @@ $stmt->execute([$_SESSION['user_id']]);
 $counts = $stmt->fetch();
 $interventionsActivesCount = (int)($counts['demandee'] ?? 0) + (int)($counts['planifiee'] ?? 0) + (int)($counts['en_cours'] ?? 0);
 
+/**
+ * Ligne secondaire d'une intervention dans la liste (qui, quand, état).
+ *
+ * @param array $iv Intervention enrichie de sa clé 'display'.
+ * @return string   Texte brut, à échapper à l'affichage.
+ */
 $displayMeta = function ($iv) use ($dbNow) {
     $qui = $iv['nomGarage'] ?: trim(($iv['technicien_prenom'] ?? '') . ' ' . ($iv['technicien_nom'] ?? ''));
     switch ($iv['display']) {
@@ -205,6 +232,7 @@ $displayMeta = function ($iv) use ($dbNow) {
             return ($qui ? $qui . ' · ' : '') . date('d/m/Y', strtotime($iv['dateIntervention']));
     }
 };
+// Icône, couleurs et libellé du badge pour chaque statut d'affichage.
 $displayInfo = [
     'demande_envoyee' => ['icon' => 'send', 'bg' => '#EFF0F6', 'color' => '#6D74A0', 'badge' => 'neutral', 'label' => 'Demande envoyée', 'row' => 'pending'],
     'planifiee'        => ['icon' => 'clock', 'bg' => '#EEF1FF', 'color' => '#3956E8', 'badge' => 'ok', 'label' => 'Planifiée', 'row' => ''],
@@ -375,7 +403,7 @@ include '../includes/header.php';
             </div>
             <div class="v2-form-group">
                 <label for="ivDescription">Décrivez le problème ou la demande</label>
-                <textarea name="description" id="ivDescription" required maxlength="2000" placeholder="Ex. : bruit anormal au freinage depuis quelques jours..."></textarea>
+                <textarea name="description" id="ivDescription" required maxlength="2000" placeholder="Ex. Bruit métallique au freinage à l'avant…"></textarea>
             </div>
             <div class="v2-modal-actions">
                 <button type="button" class="v2-btn-outline" id="closeInterventionModal">Annuler</button>

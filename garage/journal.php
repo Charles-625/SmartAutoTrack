@@ -4,6 +4,15 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace garage — Journal d'activité du garage.
+ *
+ * Accès : rôle « garage ».
+ * Page en lecture seule. Filtres GET : categorie, date_from, date_to.
+ * Table lue : journalactivites, uniquement via activity_log_fetch()
+ * (includes/activity_log.php), qui applique le cloisonnement par garage.
+ */
+
 requireRole('garage');
 
 $db = new Database();
@@ -12,6 +21,7 @@ $conn = $db->getConnection();
 $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $garageId = (int)($profile['idGarage'] ?? 0);
 
+// Heure MySQL : les durées relatives (v2_relative) sont calculées sur la même horloge que les dates stockées.
 $dbNow = $conn->query('SELECT NOW()')->fetchColumn();
 
 // Journal d'activité de CE garage uniquement. La lecture passe par
@@ -29,10 +39,12 @@ $journal = activity_log_fetch($conn, 'garage', (int)$_SESSION['user_id'], ['idGa
     'date_to' => $dateTo ?: null,
 ]);
 
+// Compteur du badge « Demandes d'intervention » de la sidebar.
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idGarage = ? AND idTechnicien IS NULL AND statut = 'PLANIFIEE'");
 $stmt->execute([$garageId]);
 $demandesEnAttente = (int)$stmt->fetchColumn();
 
+// Couleurs de l'icône et libellé affichés pour chaque catégorie du journal.
 $icons = [
     'intervention' => ['bg' => '#E7F3FC', 'color' => '#1E7DBF'],
     'reparation' => ['bg' => '#E4F7EE', 'color' => '#1E8A5A'],

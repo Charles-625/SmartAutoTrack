@@ -4,14 +4,30 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once '../includes/payments.php';
 
+/**
+ * Réparations du client : historique, filtres, détail, rapport et paiement.
+ *
+ * Accès : rôle client uniquement.
+ * GET : status ('planifiee' | 'en_cours' | 'terminee' | 'validee'),
+ *       date_from, date_to (AAAA-MM-JJ), vehicle (id de véhicule).
+ * Pas d'action POST ici : le détail, le rapport PDF et le paiement Mobile Money
+ * passent par des appels AJAX (ajax/get_reparation_details.php,
+ * ajax/download_report.php, ajax/campay_collect.php, ajax/campay_status.php).
+ * Tables lues : reparation, intervention, vehicule, utilisateur, et l'état des
+ * paiements via includes/payments.php.
+ * Cloisonnement : les réparations sont retrouvées via intervention.idClient.
+ */
 requireRole('client');
 
 $db = new Database();
 $conn = $db->getConnection();
 
+// Profil du client connecté : le type (PARTICULIER/ENTREPRISE) règle les
+// libellés et la variante de la sidebar.
 $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $clientRoleLabel = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE') ? 'Client entreprise' : 'Client particulier';
 $isEntreprise = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
+// Badge de la sidebar : interventions actives (planifiées ou en cours) du client.
 $stmtBadge = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idClient = ? AND statut IN ('PLANIFIEE', 'EN_COURS')");
 $stmtBadge->execute([$_SESSION['user_id']]);
 $interventionsActivesCount = (int)$stmtBadge->fetchColumn();
@@ -77,6 +93,8 @@ $stmt = $conn->prepare("
 $stmt->execute($params);
 $reparations = $stmt->fetchAll();
 
+// Le paiement n'est proposé que si CamPay est configuré et que les tables de
+// paiement existent ; sinon la page reste utilisable, sans bouton de paiement.
 $paymentsEnabled = campayIsConfigured() && paymentsReady($conn);
 $paymentStates = $paymentsEnabled ? paymentStatesForRepairs($conn, array_column($reparations, 'id')) : [];
 
@@ -332,7 +350,7 @@ include '../includes/header.php';
                 <p>Montant à payer : <strong><span id="paymentMontant"></span> XAF</strong></p>
                 <div class="form-group">
                     <label class="form-label" for="paymentPhone">Numéro MTN Mobile Money ou Orange Money</label>
-                    <input type="tel" id="paymentPhone" class="form-control" placeholder="6XX XX XX XX" inputmode="numeric" autocomplete="tel" maxlength="16">
+                    <input type="tel" id="paymentPhone" data-only="digits" class="form-control" placeholder="Ex. 677123456" inputmode="numeric" autocomplete="tel" maxlength="16">
                 </div>
                 <p class="text-muted" style="font-size: 0.85rem;">Une demande de confirmation sera envoyée sur ce téléphone.</p>
                 <div class="form-actions">

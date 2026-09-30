@@ -4,6 +4,17 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace technicien — Mes tâches : interventions à démarrer ou en cours.
+ *
+ * Accès : rôle « technicien ».
+ * Actions :
+ *   - POST form=start : démarrer une tâche PLANIFIEE (passage à EN_COURS).
+ *   - GET statut=toutes|a_demarrer|en_cours : filtre.
+ * Tables : intervention (écriture), vehicule, utilisateur (lecture),
+ *          journalactivites (via technicien_log()).
+ */
+
 requireRole('technicien');
 
 $db = new Database();
@@ -56,6 +67,7 @@ $stmt = $conn->prepare("
 $stmt->execute($params);
 $taches = $stmt->fetchAll();
 
+// Compteur du badge « Mes tâches » de la sidebar (tâches à démarrer).
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idTechnicien = ? AND statut = 'PLANIFIEE'");
 $stmt->execute([$selfId]);
 $tachesADemarrer = (int)$stmt->fetchColumn();

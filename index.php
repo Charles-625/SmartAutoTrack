@@ -1,6 +1,14 @@
 <?php
 require_once 'config/config.php';
 
+/**
+ * Page d'accueil publique (vitrine) de SmartAutoTrack.
+ *
+ * Accès : visiteurs non connectés ; un utilisateur connecté est renvoyé vers
+ * son espace. Aucune action POST, aucune lecture en base.
+ * Styles propres : assets/css/home.css.
+ */
+
 // Un visiteur déjà connecté n'a rien à faire sur la vitrine publique : on le
 // renvoie directement vers son espace (dashboard.php route lui-même selon
 // son rôle réel, jamais une valeur transmise par le navigateur).

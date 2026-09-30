@@ -4,6 +4,24 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Liste et gestion des comptes techniciens (espace Administrateur).
+ *
+ * Accès : rôle admin uniquement.
+ * Actions POST (jeton CSRF requis), passées par ?action=… :
+ *   - create_technicien : crée un technicien interne ou de garage, directement VALIDE ;
+ *   - attach_garage : rattache un technicien à un garage validé, ou le
+ *     détache (garage vide) pour qu'il redevienne interne ;
+ *   - validate / reject (?id=N) : passe le technicien à VALIDE / REJETE ;
+ *     prévu pour les inscriptions EN_ATTENTE, mais la requête ne vérifie pas
+ *     le statut actuel ;
+ *   - deactivate / reactivate (?id=N) : bascule VALIDE <-> SUSPENDU.
+ * Filtres GET : `status` (actif|pending|rejete|suspendu), `type` (interne|garage).
+ *
+ * Tables : utilisateur, technicien (écriture), garage, intervention
+ * (charge), notifications, journal d'activité.
+ * Liens : auth/register.php (auto-inscription), includes/password_policy.php.
+ */
 requireRole('admin');
 
 $db = new Database();
@@ -13,6 +31,16 @@ $action = $_GET['action'] ?? '';
 $technicien_id = $_GET['id'] ?? null;
 $errors = [];
 
+/**
+ * Journalise une décision de l'admin sur un technicien et le notifie.
+ *
+ * @param PDO        $conn          Connexion à la base.
+ * @param int|string $technicien_id Identifiant du technicien (= idUtilisateur).
+ * @param string     $nomActivite   Libellé de l'activité pour le journal.
+ * @param string     $notifTitre    Titre de la notification.
+ * @param string     $notifMessage  Texte de la notification.
+ * @return void Écrit dans le journal d'activité et dans notifications.
+ */
 function technicien_notify_and_log(PDO $conn, $technicien_id, string $nomActivite, string $notifTitre, string $notifMessage): void {
     $stmt = $conn->prepare("SELECT nom, prenom FROM utilisateur WHERE idUtilisateur = ?");
     $stmt->execute([$technicien_id]);
@@ -58,9 +86,11 @@ if ($action === 'create_technicien' && $postOk) {
     if (empty($newEmail) || !validateEmail($newEmail)) $errors[] = 'Email invalide.';
     if (empty($newTelephone)) $errors[] = 'Le téléphone est requis.';
     elseif (!validateDigitsOnly($newTelephone)) $errors[] = 'Le téléphone ne doit contenir que des chiffres.';
-    if (strlen($newPassword) < PASSWORD_MIN_LENGTH) $errors[] = 'Le mot de passe doit contenir au moins ' . PASSWORD_MIN_LENGTH . ' caractères.';
+    if ($pwError = passwordPolicyError($newPassword)) $errors[] = $pwError;
     if ($newPassword !== $newPasswordConfirm) $errors[] = 'Les mots de passe ne correspondent pas.';
 
+    // Un technicien de garage doit être rattaché à un garage VALIDE ; pour un
+    // technicien interne, l'éventuel garage envoyé est ignoré.
     $attachedGarage = null;
     if ($newType === 'GARAGE') {
         if (!$newGarageId) {
@@ -81,6 +111,8 @@ if ($action === 'create_technicien' && $postOk) {
         if ($stmt->fetch()) $errors[] = 'Cet email est déjà utilisé.';
     }
 
+    // Transaction : l'utilisateur et sa fiche technicien sont créés ensemble
+    // (même identifiant) ou pas du tout.
     if (empty($errors)) {
         try {
             $conn->beginTransaction();
@@ -130,6 +162,8 @@ if ($action === 'attach_garage' && $postOk) {
         $techLabel = $attachTech ? ($attachTech['prenom'] . ' ' . $attachTech['nom']) : ('technicien #' . $attachTechnicienId);
 
         try {
+            // Garage choisi : rattachement (type GARAGE). Garage vide : détachement,
+            // le technicien redevient INTERNE.
             if ($targetGarageId) {
                 $stmt = $conn->prepare("SELECT nomGarage FROM garage WHERE idGarage = ? AND statutGarage = 'VALIDE'");
                 $stmt->execute([$targetGarageId]);
@@ -230,6 +264,7 @@ if ($action === 'reactivate' && $technicien_id && $postOk) {
 // Filtres
 $status_filter = $_GET['status'] ?? '';
 $type_filter = $_GET['type'] ?? '';
+// Correspondance entre les valeurs du filtre dans l'URL et l'ENUM statutValidation.
 $statusToDb = ['actif' => 'VALIDE', 'pending' => 'EN_ATTENTE', 'rejete' => 'REJETE', 'suspendu' => 'SUSPENDU'];
 $where = [];
 $params = [];
@@ -413,11 +448,11 @@ include '../includes/header.php';
         <?php if (!empty($errors)): ?><div class="av2-alert error"><?php foreach ($errors as $e) echo h($e) . '<br>'; ?></div><?php endif; ?>
         <form method="POST" action="techniciens.php?action=create_technicien">
             <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-            <div class="av2-form-group"><label>Nom</label><input type="text" name="nom" required></div>
-            <div class="av2-form-group"><label>Prénom</label><input type="text" name="prenom" required></div>
-            <div class="av2-form-group"><label>Email</label><input type="email" name="email" required></div>
-            <div class="av2-form-group"><label>Téléphone</label><input type="tel" name="telephone" required></div>
-            <div class="av2-form-group"><label>Spécialité</label><input type="text" name="specialite" placeholder="Ex. : Freinage, Moteur & diagnostic... (optionnel)"></div>
+            <div class="av2-form-group"><label>Nom</label><input type="text" name="nom" data-only="letters" required placeholder="Ex. Mbarga"></div>
+            <div class="av2-form-group"><label>Prénom</label><input type="text" name="prenom" data-only="letters" required placeholder="Ex. Jean"></div>
+            <div class="av2-form-group"><label>Email</label><input type="email" name="email" required placeholder="exemple@gmail.com"></div>
+            <div class="av2-form-group"><label>Téléphone</label><input type="tel" name="telephone" data-only="digits" inputmode="numeric" maxlength="15" required placeholder="Ex. 677123456"></div>
+            <div class="av2-form-group"><label>Spécialité</label><input type="text" name="specialite" placeholder="Ex. Électricité automobile"></div>
             <div class="av2-form-group">
                 <label>Type</label>
                 <select name="type_technicien" id="newTechType">
@@ -434,8 +469,8 @@ include '../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="av2-form-group"><label>Mot de passe</label><input type="password" name="mot_de_passe" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>"></div>
-            <div class="av2-form-group"><label>Confirmation</label><input type="password" name="confirmation" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>"></div>
+            <div class="av2-form-group"><label>Mot de passe</label><input type="password" name="mot_de_passe" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>" data-password-policy autocomplete="new-password" placeholder="<?php echo PASSWORD_MIN_LENGTH; ?> caractères minimum"></div>
+            <div class="av2-form-group"><label>Confirmation</label><input type="password" name="confirmation" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>" placeholder="Retapez le mot de passe"></div>
             <div class="av2-modal-actions">
                 <button type="button" class="av2-btn-outline" id="closeNewTechnicien">Annuler</button>
                 <button type="submit" class="av2-btn-primary">Créer le technicien</button>

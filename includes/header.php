@@ -6,6 +6,23 @@ if (!class_exists('Database')) {
     require_once __DIR__ . '/../config/database.php';
 }
 
+/**
+ * En-tête HTML commun à toutes les pages (inclus après la logique de la page).
+ *
+ * Variables facultatives définies par la page appelante AVANT l'inclusion :
+ *   $pageTitle        titre de l'onglet (suffixé par SITE_NAME) ;
+ *   $bodyClass        classe du <body> (ex. 'v2', 'gv2', 'tv2', 'av2' pour
+ *                     les habillages par rôle, 'homev2' pour l'accueil) ;
+ *   $hideNavbar       true pour masquer la barre de navigation historique
+ *                     (les pages v2 affichent leur propre sidebar) ;
+ *   $extraStylesheets feuilles CSS supplémentaires, relatives à SITE_URL ;
+ *   $extraFonts       URL complètes de polices (Google Fonts).
+ *
+ * Publie le jeton CSRF dans <meta name="csrf-token"> (repris par
+ * assets/js/main.js pour les requêtes AJAX) et ouvre <main>, refermé par
+ * includes/footer.php.
+ */
+
 // Vérifier si l'utilisateur est connecté
 $isLoggedIn = isset($_SESSION['user_id']);
 $userRole = $isLoggedIn ? $_SESSION['role'] : null;

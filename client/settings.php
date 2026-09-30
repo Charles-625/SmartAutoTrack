@@ -3,14 +3,26 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 
+/**
+ * Paramètres de l'espace client : choix du thème d'affichage.
+ *
+ * Accès : rôle client uniquement.
+ * POST action=change_theme (jeton CSRF requis) : enregistre le thème en
+ * session et dans utilisateur.themePreference. Seuls les thèmes de la liste
+ * blanche sont acceptés ; une autre valeur est ignorée sans message.
+ * Tables lues/écrites : utilisateur (themePreference) ; lue : intervention (badge).
+ */
 requireRole('client');
 
 $db = new Database();
 $conn = $db->getConnection();
 
+// Profil du client connecté : le type (PARTICULIER/ENTREPRISE) règle les
+// libellés et la variante de la sidebar.
 $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $clientRoleLabel = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE') ? 'Client entreprise' : 'Client particulier';
 $isEntreprise = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
+// Badge de la sidebar : interventions actives (planifiées ou en cours) du client.
 $stmtBadge = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idClient = ? AND statut IN ('PLANIFIEE', 'EN_COURS')");
 $stmtBadge->execute([$_SESSION['user_id']]);
 $interventionsActivesCount = (int)$stmtBadge->fetchColumn();
@@ -43,6 +55,7 @@ $stmt = $conn->prepare("SELECT themePreference FROM utilisateur WHERE idUtilisat
 $stmt->execute([$_SESSION['user_id']]);
 $user = $stmt->fetch();
 
+// Priorité : préférence en base, puis session, puis thème clair par défaut.
 $current_theme = $user['themePreference'] ?? $_SESSION['theme'] ?? 'light';
 
 $pageTitle = 'Paramètres';

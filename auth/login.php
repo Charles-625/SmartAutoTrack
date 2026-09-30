@@ -4,6 +4,18 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once '../includes/login_throttle.php';
 
+/**
+ * Page de connexion (accès public, tous rôles).
+ *
+ * POST : email + mot_de_passe + csrf_token. Le rôle n'est jamais fourni par
+ * le formulaire : il est déduit côté serveur (config/roles.php). Les échecs
+ * sont limités par includes/login_throttle.php (réponse 429 + Retry-After).
+ * En cas de succès : régénération de l'identifiant de session, remplissage
+ * de $_SESSION puis redirection vers le tableau de bord du rôle.
+ * GET ?deconnecte=1 : affiche la confirmation de déconnexion (auth/logout.php).
+ *
+ * Tables lues : utilisateur (+ client/technicien/garage/admin via roles.php).
+ */
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -17,6 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($email)) $errors[] = 'L\'email est requis.';
         if (empty($mot_de_passe)) $errors[] = 'Le mot de passe est requis.';
 
+        // Anti force brute : blocage temporaire, avec un compteur par email et un autre par IP.
         $clientIp = $_SERVER['REMOTE_ADDR'] ?? 'inconnue';
         if (empty($errors)) {
             $retryAfter = loginThrottleRetryAfter($email, $clientIp);
@@ -137,16 +150,16 @@ include '../includes/header.php';
                 <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
 
                 <div class="authv2-field">
-                    <label for="loginEmail">Email</label>
+                    <label for="loginEmail">Email <span class="authv2-required" aria-hidden="true">*</span></label>
                     <div class="authv2-input-wrap">
                         <span class="authv2-icon"><i class="fas fa-envelope"></i></span>
                         <input type="email" name="email" id="loginEmail" required autocomplete="username"
-                               value="<?php echo h($_POST['email'] ?? ''); ?>" placeholder="votre@email.com">
+                               value="<?php echo h($_POST['email'] ?? ''); ?>" placeholder="exemple@gmail.com">
                     </div>
                 </div>
 
                 <div class="authv2-field">
-                    <label for="loginPassword">Mot de passe</label>
+                    <label for="loginPassword">Mot de passe <span class="authv2-required" aria-hidden="true">*</span></label>
                     <div class="authv2-input-wrap has-toggle">
                         <span class="authv2-icon"><i class="fas fa-lock"></i></span>
                         <input type="password" name="mot_de_passe" id="loginPassword" required autocomplete="current-password" placeholder="••••••••">

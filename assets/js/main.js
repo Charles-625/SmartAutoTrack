@@ -1,12 +1,33 @@
 /**
  * SmartAutoTrack - JavaScript principal
+  *
+  * Chargé sur toutes les pages par includes/header.php, juste après jQuery
+  * et avant assets/js/themes.js. Les globales SITE_URL et USER_ID sont
+  * définies plus bas dans includes/footer.php : elles ne sont donc lues
+  * qu'après le chargement du DOM (init, gestionnaires d'événements).
+  *
+  * Contenu : jeton CSRF ajouté aux requêtes AJAX jQuery, objet global
+  * window.SmartAutoTrack (utilitaires, notifications, messages, fenêtre
+  * modale, toasts, formulaires, tableaux), gestion commune des erreurs AJAX,
+  * menu mobile des tableaux de bord, règles de mot de passe affichées en
+  * direct et filtres de saisie (data-only).
  */
 
+/**
+ * Lit le jeton CSRF publié par includes/header.php dans
+ * <meta name="csrf-token">. Lu à chaque appel (et non mis en cache) car la
+ * balise est placée après le chargement de ce script.
+ * Aussi utilisé par themes.js (en-tête X-CSRF-Token de fetch).
+ * @returns {string} Le jeton, ou une chaîne vide si la balise est absente.
+ */
 function smartautotrackCsrfToken() {
     const meta = document.querySelector('meta[name="csrf-token"]');
     return meta ? meta.getAttribute('content') : '';
 }
 
+// Toute requête jQuery vers le site porte l'en-tête X-CSRF-Token, vérifié
+// côté serveur (config/config.php). Les requêtes vers un autre domaine ne le
+// reçoivent pas, pour ne jamais divulguer le jeton.
 if (window.jQuery) {
     jQuery.ajaxSetup({
         beforeSend: function(xhr, settings) {
@@ -18,6 +39,9 @@ if (window.jQuery) {
 }
 
 // Configuration globale
+// Espace de noms unique : évite de multiplier les fonctions globales. Les
+// sous-objets dépendent de jQuery ($) et des éléments communs du pied de page
+// (#modal-overlay, #toast-container).
 window.SmartAutoTrack = {
     // Fonctions utilitaires
     utils: {
@@ -89,12 +113,16 @@ window.SmartAutoTrack = {
         },
         
         // Valider un téléphone français
+        // Format français hérité du modèle d'origine : les numéros camerounais
+        // sont contrôlés côté serveur, pas par cette fonction.
         validatePhone: function(phone) {
             const re = /^(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}$/;
             return re.test(phone);
         },
         
         // Valider une immatriculation française
+        // Format SIV strict (AB-123-CD). Le filtre de saisie data-only="plate" et
+        // validatePlate() côté PHP (config/config.php), plus souples, font foi.
         validatePlate: function(plate) {
             const re = /^[A-Z]{2}-[0-9]{3}-[A-Z]{2}$/;
             return re.test(plate);
@@ -144,6 +172,9 @@ window.SmartAutoTrack = {
     },
     
     // Gestion des notifications
+    // Menu des notifications de la barre de navigation : lecture via
+    // ajax/notifications.php, marquage via ajax/mark_*_read.php. Le titre et le
+    // message sont échappés avant insertion (contenu venant de la base).
     notifications: {
         // Charger les notifications
         load: function() {
@@ -276,6 +307,13 @@ window.SmartAutoTrack = {
     // Gestion des modals
     modal: {
         // Afficher un modal
+        /**
+         * Ouvre la fenêtre modale commune (#modal-overlay de includes/footer.php).
+         * Le contenu et le titre sont insérés tels quels en HTML : ne passer que du
+         * HTML construit par le code, jamais une saisie non échappée.
+         * @param {string} content HTML du corps.
+         * @param {string} [title] Titre facultatif.
+         */
         show: function(content, title) {
             const modal = $('#modal-overlay');
             const modalBody = $('.modal-body');
@@ -298,6 +336,13 @@ window.SmartAutoTrack = {
     // Gestion des toasts
     toast: {
         // Afficher un toast
+        /**
+         * Affiche une notification éphémère (toast) dans #toast-container,
+         * supprimée au bout de 5 secondes ou au clic sur la croix. Le message est
+         * échappé : il est affiché comme du texte.
+         * @param {string} message Texte à afficher.
+         * @param {string} [type='info'] success, error, warning ou info.
+         */
         show: function(message, type = 'info') {
             const toast = $(`
                 <div class="toast toast-${type}">
@@ -339,6 +384,13 @@ window.SmartAutoTrack = {
     // Gestion des formulaires
     forms: {
         // Valider un formulaire
+        /**
+         * Contrôle minimal avant envoi : champs [required] non vides et format des
+         * champs email. Simple confort de saisie ; la validation qui fait foi est
+         * faite côté serveur par chaque page.
+         * @param {jQuery} form Formulaire à contrôler.
+         * @returns {boolean} true si le formulaire peut être envoyé.
+         */
         validate: function(form) {
             let isValid = true;
             const errors = [];
@@ -387,6 +439,12 @@ window.SmartAutoTrack = {
     // Gestion des tables
     tables: {
         // Initialiser une table avec recherche
+        /**
+         * Prépare les tableaux : les enveloppe dans .table-responsive (défilement
+         * horizontal sur mobile) et branche le filtrage des lignes sur un champ
+         * .table-search s'il existe.
+         * @param {string} selector Sélecteur des tableaux (appelé avec '.table').
+         */
         init: function(selector) {
             const table = $(selector);
 
@@ -421,6 +479,11 @@ window.SmartAutoTrack = {
     },
     
     // Initialisation
+    /**
+     * Point d'entrée, appelé au chargement du DOM. Pour un utilisateur connecté,
+     * charge puis rafraîchit toutes les 30 secondes les notifications et le
+     * compteur de messages.
+     */
     init: function() {
         // Charger les notifications et messages si l'utilisateur est connecté
         if (typeof USER_ID !== 'undefined' && USER_ID) {
@@ -442,6 +505,12 @@ window.SmartAutoTrack = {
     },
     
     // Événements globaux
+    /**
+     * Branche les comportements communs à toutes les pages : menu mobile de la
+     * barre historique, menus déroulants, fermeture de la modale, validation des
+     * formulaires à l'envoi et confirmation des boutons .btn-confirm
+     * (message dans data-confirm).
+     */
     initGlobalEvents: function() {
         // Bascule menu mobile
         $('.navbar-toggle').on('click', function() {
@@ -496,11 +565,24 @@ window.SmartAutoTrack = {
 };
 
 // Fonction globale pour afficher des toasts
+// Note : includes/footer.php déclare aussi showToast() et showModal() ; sur
+// les pages qui l'incluent, ce sont ses versions (déclarées plus tard) qui
+// s'appliquent.
+/**
+ * Raccourci global vers SmartAutoTrack.toast.show().
+ * @param {string} message Texte à afficher.
+ * @param {string} [type='info'] success, error, warning ou info.
+ */
 function showToast(message, type = 'info') {
     SmartAutoTrack.toast.show(message, type);
 }
 
 // Fonction globale pour afficher des modals
+/**
+ * Raccourci global vers SmartAutoTrack.modal.show().
+ * @param {string} content HTML du corps (de confiance).
+ * @param {string} [title=''] Titre facultatif.
+ */
 function showModal(content, title = '') {
     SmartAutoTrack.modal.show(content, title);
 }
@@ -523,6 +605,12 @@ $(document).ready(function() {
 // ces sélecteurs. Ceci est un confort de saisie côté client — la validation
 // réelle reste faite côté serveur sur chaque formulaire.
 // ============================================================
+/**
+ * Retire d'un champ les caractères interdits en gardant le curseur à sa
+ * place (sinon il sauterait en fin de champ à chaque frappe).
+ * @param {HTMLInputElement} el Champ à nettoyer.
+ * @param {RegExp} regex Caractères interdits (drapeau g).
+ */
 function smartautotrackFilterInput(el, regex) {
     const start = el.selectionStart;
     const originalLength = el.value.length;
@@ -544,6 +632,8 @@ $(document).on('input', 'input[name="telephone"]', function () {
 });
 
 // Gestion des erreurs AJAX globales
+// 401 : session expirée, retour à la connexion ; 403 et 5xx : message
+// générique, le détail de l'erreur restant dans les journaux du serveur.
 $(document).ajaxError(function(event, xhr, settings, thrownError) {
     if (xhr.status === 401) {
         showToast('Session expirée. Veuillez vous reconnecter.', 'error');
@@ -590,12 +680,14 @@ $(function () {
     toggle.innerHTML = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M3 6H21M3 12H21M3 18H21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
     main.insertBefore(toggle, main.firstChild);
 
+    /** Ferme le tiroir de navigation et rétablit le défilement de la page. */
     function closeNav() {
         sidebar.classList.remove('is-open');
         backdrop.classList.remove('is-open');
         document.body.classList.remove('nav-open');
         toggle.setAttribute('aria-expanded', 'false');
     }
+    /** Ouvre le tiroir de navigation (classe nav-open : bloque le défilement du fond). */
     function openNav() {
         sidebar.classList.add('is-open');
         backdrop.classList.add('is-open');
@@ -617,3 +709,90 @@ $(function () {
         if (window.innerWidth > 720) closeNav();
     });
 });
+
+// Robustesse des mots de passe : liste des règles cochée en direct sous chaque
+// champ data-password-policy. Mêmes règles que includes/password_policy.php,
+// qui reste la validation qui fait foi côté serveur.
+document.addEventListener('DOMContentLoaded', function () {
+    const rules = [
+        { label: '8 caractères minimum', test: function (v) { return v.length >= 8; } },
+        { label: 'Une lettre minuscule', test: function (v) { return /[a-z]/.test(v); } },
+        { label: 'Une lettre majuscule', test: function (v) { return /[A-Z]/.test(v); } },
+        { label: 'Un chiffre', test: function (v) { return /[0-9]/.test(v); } },
+        { label: 'Un caractère spécial (ex. ! @ # $ %)', test: function (v) { return /[^A-Za-z0-9]/.test(v); } }
+    ];
+
+    document.querySelectorAll('input[data-password-policy]').forEach(function (input) {
+        const list = document.createElement('ul');
+        list.className = 'pw-rules';
+        list.setAttribute('aria-live', 'polite');
+        const items = rules.map(function (rule) {
+            const li = document.createElement('li');
+            li.textContent = rule.label;
+            list.appendChild(li);
+            return li;
+        });
+        input.insertAdjacentElement('afterend', list);
+
+        /**
+         * Coche les règles respectées et bloque l'envoi du formulaire
+         * (setCustomValidity) tant qu'une règle manque.
+         */
+        function update() {
+            const value = input.value;
+            let missing = 0;
+            rules.forEach(function (rule, i) {
+                const ok = rule.test(value);
+                items[i].classList.toggle('ok', ok);
+                if (!ok) missing++;
+            });
+            // Un champ facultatif laissé vide (ex. profil sans changement) reste valide
+            const blocking = missing > 0 && (value !== '' || input.required);
+            input.setCustomValidity(blocking ? 'Le mot de passe ne respecte pas toutes les règles indiquées.' : '');
+        }
+
+        input.addEventListener('input', update);
+        update();
+    });
+});
+
+// Champs restreints : data-only="digits" (téléphone, montants…) n'accepte que
+// des chiffres, data-only="letters" (nom, prénom…) que des lettres, accents,
+// espace, tiret et apostrophe, data-only="plate" (immatriculation) lettres,
+// chiffres, espace et tiret en majuscules, data-only="model" (modèle de
+// véhicule) lettres, chiffres, espace et - . + ! /. Le texte collé est filtré
+// aussi. La validation serveur (validateDigitsOnly, validateLettersOnly,
+// validatePlate, validateModel) reste celle qui fait foi.
+(function () {
+    const forbidden = {
+        digits: /[^0-9]/g,
+        letters: /[^A-Za-zÀ-ÖØ-öø-ÿ' -]/g,
+        plate: /[^A-Za-z0-9 -]/g,
+        model: /[^A-Za-zÀ-ÖØ-öø-ÿ0-9 .\/+!-]/g
+    };
+
+    // Délégation sur document : couvre aussi les champs ajoutés après le
+    // chargement (modales, formulaires dynamiques).
+    document.addEventListener('input', function (e) {
+        const input = e.target;
+        const pattern = input.dataset && forbidden[input.dataset.only];
+        if (!pattern || input.type === 'number') return;
+        let cleaned = input.value.replace(pattern, '');
+        if (input.dataset.only === 'plate') cleaned = cleaned.toUpperCase();
+        if (cleaned === input.value) return;
+        const caret = input.selectionStart - (input.value.length - cleaned.length);
+        input.value = cleaned;
+        try { input.setSelectionRange(caret, caret); } catch (err) { /* type sans sélection */ }
+    });
+
+    // Un <input type="number"> accepte nativement e, E, + et - (notation
+    // scientifique) : on les bloque, ainsi que la virgule/le point sur les
+    // champs entiers (data-only="digits").
+    document.addEventListener('keydown', function (e) {
+        const input = e.target;
+        if (!(input instanceof HTMLInputElement) || input.type !== 'number') return;
+        const blocked = ['e', 'E', '+', '-'];
+        if (input.dataset.only === 'digits') blocked.push('.', ',');
+        if (blocked.indexOf(e.key) !== -1) e.preventDefault();
+    });
+})();

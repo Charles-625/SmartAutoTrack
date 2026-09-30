@@ -1,6 +1,20 @@
 <?php
 /**
  * Configuration générale de SmartAutoTrack
+ *
+ * Inclus en premier par toutes les pages (require_once 'config/config.php') :
+ *   - calcule BASE_PATH / SITE_URL à partir de l'emplacement réel du projet
+ *     (fonctionne sous /HCH/ comme à la racine d'un vhost) ;
+ *   - définit les constantes de rôles, de statuts et de types de notification ;
+ *   - démarre la session (cookie HCHSESSID limité à BASE_PATH) ;
+ *   - fournit les fonctions transverses : contrôle d'accès, CSRF, échappement,
+ *     validations serveur des formulaires, hachage des mots de passe ;
+ *   - charge includes/password_policy.php et includes/activity_log.php ;
+ *   - coupe immédiatement la session d'un compte devenu inutilisable
+ *     (enforceActiveSession(), exécutée à chaque requête).
+ *
+ * Les secrets (base, CamPay, Hugging Face) ne sont jamais ici : voir
+ * appConfig() et config/local.example.php.
  */
 
 // Ne jamais afficher les erreurs PHP/SQL au visiteur : elles vont dans les logs serveur.
@@ -9,6 +23,8 @@ ini_set('display_errors', getenv('HCH_DEBUG') ? '1' : '0');
 ini_set('display_startup_errors', '0');
 ini_set('log_errors', '1');
 
+// Garde : les constantes ne sont définies qu'une fois, même si le fichier
+// est inclus plusieurs fois (par un include/require simple, par exemple).
 if (!defined('SITE_NAME')) {
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
@@ -27,6 +43,7 @@ if (!defined('SITE_NAME')) {
     define('UPLOAD_PATH', __DIR__ . '/../uploads/');
     define('UPLOAD_URL', SITE_URL . 'uploads/');
 
+    // Dossiers d'upload créés à la volée (photos des techniciens notamment).
     if (!file_exists(UPLOAD_PATH)) {
         mkdir(UPLOAD_PATH, 0755, true);
     }
@@ -50,6 +67,8 @@ if (!defined('SITE_NAME')) {
     define('NOTIF_VALIDATION', 'validation');
 }
 
+// Cookie de session propre à l'application (nom et chemin dédiés) pour ne pas
+// partager la session avec d'autres projets du même serveur XAMPP.
 if (session_status() === PHP_SESSION_NONE) {
     session_name('HCHSESSID');
     session_set_cookie_params([
@@ -72,6 +91,11 @@ if (isset($_COOKIE['PHPSESSID'])) {
 /**
  * Paramètre de configuration : variable d'environnement du même nom si elle
  * est définie, sinon clé du tableau renvoyé par config/local.php (non versionné).
+ * local.php n'est lu qu'une fois par requête (cache statique).
+ *
+ * @param string $key     Nom du paramètre (ex. 'CAMPAY_TOKEN', 'HF_MODEL').
+ * @param mixed  $default Valeur renvoyée si le paramètre est absent.
+ * @return mixed
  */
 function appConfig(string $key, $default = null) {
     $env = getenv($key);
@@ -87,6 +111,10 @@ function appConfig(string $key, $default = null) {
     return $local[$key] ?? $default;
 }
 
+/**
+ * Variante booléenne de appConfig() : accepte "true"/"false", "1"/"0",
+ * "on"/"off", "yes"/"no" (utile pour les variables d'environnement).
+ */
 function appConfigBool(string $key, bool $default = false): bool {
     $value = appConfig($key);
     if ($value === null) {
@@ -95,6 +123,11 @@ function appConfigBool(string $key, bool $default = false): bool {
     return filter_var($value, FILTER_VALIDATE_BOOLEAN);
 }
 
+/**
+ * Redirige vers une page de l'application puis arrête le script.
+ *
+ * @param string $url Chemin relatif à SITE_URL (ex. 'auth/login.php').
+ */
 function redirect($url) {
     header('Location: ' . SITE_URL . ltrim($url, '/'));
     exit();
@@ -106,12 +139,18 @@ function redirect($url) {
 // colonne de la base : il est déterminé par config/roles.php::getUserRole()
 // (regarde dans quelle table — administrateur/client/technicien — l'utilisateur
 // apparaît), puis stocké en session par auth/login.php comme avant.
+/** Exige un utilisateur connecté, sinon renvoie vers la page de connexion. */
 function requireAuth() {
     if (!isset($_SESSION['user_id']) || !isset($_SESSION['role'])) {
         redirect('auth/login.php');
     }
 }
 
+/**
+ * Exige un rôle précis (ROLE_ADMIN, ROLE_CLIENT...) ; un utilisateur connecté
+ * avec un autre rôle est renvoyé vers dashboard.php, qui l'aiguille vers son
+ * propre espace.
+ */
 function requireRole($role) {
     requireAuth();
     if ($_SESSION['role'] !== $role) {
@@ -122,6 +161,8 @@ function requireRole($role) {
 /**
  * Équivalent de requireAuth()/requireRole() pour les endpoints JSON :
  * répond 401/403 en JSON au lieu de rediriger vers une page HTML.
+ *
+ * @param string|null $role Rôle exigé, ou null pour exiger seulement une connexion.
  */
 function requireJsonAuth($role = null) {
     if (!isset($_SESSION['user_id']) || !isset($_SESSION['role'])) {
@@ -136,10 +177,16 @@ function requireJsonAuth($role = null) {
     }
 }
 
+/** Date SQL au format d'affichage français (jj/mm/aaaa hh:mm). */
 function formatDate($date) {
     return date('d/m/Y H:i', strtotime($date));
 }
 
+/**
+ * Jeton CSRF de la session, créé au premier appel puis réutilisé pour toute
+ * la session (un seul jeton par utilisateur, publié aussi dans la balise
+ * <meta name="csrf-token"> de includes/header.php).
+ */
 function generateCSRFToken() {
     if (!isset($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -147,6 +194,7 @@ function generateCSRFToken() {
     return $_SESSION['csrf_token'];
 }
 
+/** Compare le jeton reçu à celui de la session, en temps constant. */
 function verifyCSRFToken($token) {
     return isset($_SESSION['csrf_token']) && is_string($token) && hash_equals($_SESSION['csrf_token'], $token);
 }
@@ -169,10 +217,16 @@ function h($value) {
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8', false);
 }
 
+/**
+ * Nettoyage des saisies avant enregistrement : espaces de bord retirés,
+ * balises supprimées, caractères spéciaux encodés en entités HTML. Les
+ * valeurs stockées sont donc déjà encodées (voir h() et validateLettersOnly()).
+ */
 function sanitize($data) {
     return htmlspecialchars(strip_tags(trim($data)), ENT_QUOTES, 'UTF-8');
 }
 
+/** Format d'adresse email valide (validation serveur). */
 function validateEmail($email) {
     return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
 }
@@ -198,18 +252,52 @@ function validateDigitsOnly($value) {
     return $value !== '' && preg_match('/^[0-9]+$/', $value) === 1;
 }
 
-const PASSWORD_MIN_LENGTH = 8;
+/**
+ * Immatriculation : lettres et chiffres, séparés au besoin par des espaces ou
+ * des tirets ("LT 123 AB", "CE-456-DF", "AB123CD"), 2 à 15 caractères.
+ */
+function validatePlate($value) {
+    return preg_match('/^[A-Za-z0-9][A-Za-z0-9 -]{0,13}[A-Za-z0-9]$/', (string)$value) === 1;
+}
 
+/**
+ * Normalise une immatriculation avant enregistrement : majuscules, espaces
+ * multiples ramenés à un seul ("lt  123 ab" -> "LT 123 AB").
+ */
+function normalizePlate($value) {
+    return strtoupper(preg_replace('/\s+/', ' ', trim((string)$value)));
+}
+
+/**
+ * Modèle de véhicule, tel qu'on les écrit réellement : lettres (accents
+ * compris), chiffres, espaces et les quelques signes qu'on y trouve —
+ * tiret (C-HR, CX-5), point (ID.4), plus (Ka+), point d'exclamation (up!),
+ * barre oblique. Doit commencer par une lettre ou un chiffre, 50 caractères
+ * au plus. Ex. : "Corolla", "308", "Classe C", "RAV4", "Model 3", "ID.4".
+ */
+function validateModel($value) {
+    $decoded = html_entity_decode((string)$value, ENT_QUOTES, 'UTF-8');
+    return preg_match('/^[A-Za-zÀ-ÖØ-öø-ÿ0-9][A-Za-zÀ-ÖØ-öø-ÿ0-9 .\/+!-]{0,49}$/u', $decoded) === 1;
+}
+
+require_once __DIR__ . '/../includes/password_policy.php';
+
+/** Hache un mot de passe avec l'algorithme par défaut de PHP (bcrypt). */
 function hashPassword($password) {
     return password_hash($password, PASSWORD_DEFAULT);
 }
 
+/** Vérifie un mot de passe en clair contre le hachage stocké (colonne motDePasse). */
 function verifyPassword($password, $hash) {
     return password_verify($password, $hash);
 }
 
 require_once __DIR__ . '/../includes/activity_log.php';
 
+/**
+ * Déconnexion complète : vide la session, expire son cookie et supprime au
+ * passage l'ancien cookie PHPSESSID global s'il traîne encore.
+ */
 function destroySession() {
     $_SESSION = [];
 
@@ -258,4 +346,5 @@ function enforceActiveSession() {
     }
 }
 
+// Exécuté à chaque inclusion de config.php, donc à chaque requête authentifiée.
 enforceActiveSession();

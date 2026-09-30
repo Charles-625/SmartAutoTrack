@@ -2,6 +2,17 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 
+/**
+ * Ancienne page "Anomalies récentes" (30 derniers jours) avec graphiques.
+ *
+ * Accès : rôle client uniquement. Page héritée, au gabarit d'origine (header
+ * classique, sans sidebar "v2") ; elle n'est plus reliée depuis le menu, la
+ * liste courante étant client/anomalies.php.
+ * Aucune action POST/GET : lecture seule.
+ * Tables lues : anomalie, vehicule (limitées aux véhicules du client).
+ * Les statistiques (par niveau, statut, véhicule, jour, type) sont calculées
+ * en PHP sur le résultat de la requête, pas en SQL.
+ */
 requireRole('client');
 
 $db = new Database();

@@ -3,6 +3,22 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 
+/**
+ * Messagerie interne : liste des conversations de l'utilisateur connecté et
+ * fenêtre de discussion, commune aux quatre rôles (habillage v2 par rôle).
+ *
+ * Accès : tout utilisateur connecté ; seules ses propres conversations sont
+ * lues (requêtes bornées à $_SESSION['user_id']).
+ *
+ * GET contact=<id> : ouvre directement la conversation avec ce contact
+ * (bouton « Contacter » d'une réparation, par exemple).
+ * Aucun POST ici : le chargement d'une conversation et l'envoi passent par
+ * ajax/load_conversation.php et ajax/send_message.php.
+ *
+ * Tables lues : messages, utilisateur, administrateur, client, technicien,
+ * garage, intervention (badges de la sidebar).
+ */
+
 requireAuth();
 
 $db = new Database();
@@ -20,6 +36,7 @@ $isEntreprise = false;
 $interventionsActivesCount = 0;
 $garagePendingCount = 0;
 $technicienTachesCount = 0;
+// Compteurs des badges de la sidebar, selon le rôle.
 if ($isClientV2) {
     $clientProfile = getUserProfile($conn, (int)$_SESSION['user_id']);
     $isEntreprise = (($clientProfile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
@@ -97,6 +114,7 @@ $stmt = $conn->prepare("
 $stmt->execute([$_SESSION['user_id']]);
 $users = $stmt->fetchAll();
 
+// Habillage : feuille de style et classe du <body> selon le rôle.
 $pageTitle = 'Messages';
 if ($v2Role === 'client') {
     $hideNavbar = true;
@@ -154,7 +172,7 @@ include '../includes/header.php';
             <div class="conversations-header">
                 <h3>Conversations</h3>
                 <div class="conversation-search">
-                    <input type="text" id="conversationSearch" placeholder="Rechercher..." class="form-control">
+                    <input type="text" id="conversationSearch" placeholder="Rechercher par nom…" class="form-control">
                     <i class="fas fa-search"></i>
                 </div>
             </div>
@@ -234,12 +252,12 @@ include '../includes/header.php';
                 
                 <div class="form-group">
                     <label class="form-label">Sujet</label>
-                    <input type="text" name="sujet" class="form-control" required>
+                    <input type="text" name="sujet" class="form-control" required placeholder="Ex. Question sur ma réparation">
                 </div>
                 
                 <div class="form-group">
                     <label class="form-label">Message</label>
-                    <textarea name="contenu" class="form-control" rows="5" required></textarea>
+                    <textarea name="contenu" class="form-control" rows="5" required placeholder="Écrivez votre message…"></textarea>
                 </div>
                 
                 <div class="form-actions">
@@ -636,7 +654,7 @@ $(document).ready(function() {
             <div class="chat-input">
                 <form id="chatForm">
                     <div class="chat-input-group">
-                        <input type="text" name="message" class="chat-input-field" placeholder="Tapez votre message..." required>
+                        <input type="text" name="message" class="chat-input-field" placeholder="Écrivez votre message…" required>
                         <button type="submit" class="btn btn-primary chat-send-btn">
                             <i class="fas fa-paper-plane"></i>
                         </button>

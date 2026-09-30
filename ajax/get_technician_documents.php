@@ -2,6 +2,15 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 
+/**
+ * Endpoint AJAX (JSON) : liste des documents justificatifs d'un technicien,
+ * utilisée par l'admin pour valider une inscription. Ne renvoie que les
+ * métadonnées : le fichier lui-même est servi par ajax/download_document.php.
+ *
+ * Accès : admin uniquement.
+ * GET : id (identifiant utilisateur du technicien).
+ * Tables lues : utilisateur, technicien, technician_documents.
+ */
 header('Content-Type: application/json');
 
 requireJsonAuth('admin');

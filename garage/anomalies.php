@@ -4,6 +4,22 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 
+/**
+ * Espace garage — Anomalies constatées sur les véhicules suivis par le garage.
+ *
+ * Accès : rôle « garage » (requireRole).
+ * Actions :
+ *   - POST form=new_anomalie : constater une anomalie sur une intervention
+ *     EN_COURS ou TERMINEE du garage (statut initial NOUVELLE) et la journaliser.
+ *   - GET action=new&intervention_id=… : ouvre directement le formulaire,
+ *     l'intervention présélectionnée.
+ *   - GET statut=active|resolue, niveau=FAIBLE|MOYEN|CRITIQUE : filtres de la liste.
+ * Tables : anomalie (écriture), intervention, vehicule, utilisateur (lecture),
+ *          journalactivites (via garage_log()).
+ * Liés : garage/includes/helpers.php, garage/reparations.php (la réparation
+ *        passe les anomalies de l'intervention au statut TRAITEE).
+ */
+
 requireRole('garage');
 
 $db = new Database();
@@ -35,6 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'new_ano
         if (empty($description)) $formErrors[] = 'Merci de décrire l\'anomalie constatée.';
 
         if (empty($formErrors)) {
+            // Contrôle de propriété : l'intervention doit appartenir à CE garage.
             $stmt = $conn->prepare("SELECT idVehicule, idTechnicien FROM intervention WHERE idIntervention = ? AND idGarage = ?");
             $stmt->execute([$interventionId, $garageId]);
             $iv = $stmt->fetch();
@@ -106,6 +123,7 @@ $stmt = $conn->prepare("
 $stmt->execute(array_merge([$garageId, $garageId], $params));
 $anomalies = $stmt->fetchAll();
 
+// Compteur du badge « Demandes d'intervention » de la sidebar.
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idGarage = ? AND idTechnicien IS NULL AND statut = 'PLANIFIEE'");
 $stmt->execute([$garageId]);
 $demandesEnAttente = (int)$stmt->fetchColumn();
@@ -205,7 +223,7 @@ include '../includes/header.php';
             </div>
             <div class="gv2-form-group">
                 <label for="anType">Type d'anomalie</label>
-                <input type="text" name="type" id="anType" placeholder="Ex. : Freinage, Moteur, Pneumatiques...">
+                <input type="text" name="type" id="anType" placeholder="Ex. Freinage">
             </div>
             <div class="gv2-form-group">
                 <label for="anNiveau">Niveau</label>
@@ -217,7 +235,7 @@ include '../includes/header.php';
             </div>
             <div class="gv2-form-group">
                 <label for="anDescription">Anomalie constatée</label>
-                <textarea name="description" id="anDescription" required placeholder="Ex. : Usure importante des plaquettes de frein avant"></textarea>
+                <textarea name="description" id="anDescription" required placeholder="Ex. Bruit métallique au freinage à l'avant…"></textarea>
             </div>
             <div class="gv2-modal-actions">
                 <button type="button" class="gv2-btn-outline" id="closeAnomalieModal">Annuler</button>

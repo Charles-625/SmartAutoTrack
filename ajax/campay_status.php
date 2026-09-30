@@ -3,6 +3,16 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../includes/payments.php';
 
+/**
+ * Endpoint AJAX (JSON) : interrogé périodiquement par client/reparations.php
+ * pour connaître l'état d'un paiement CamPay en cours.
+ *
+ * Accès : client connecté, POST avec jeton CSRF.
+ * POST : paiement_id (doit appartenir au client connecté, sinon 404).
+ * Réponse : {success, statut}. La mise à jour de la table paiement est faite
+ * par paymentRefresh() (includes/payments.php) ; le webhook
+ * webhooks/campay.php peut aussi la faire de son côté.
+ */
 header('Content-Type: application/json');
 
 requireJsonAuth(ROLE_CLIENT);

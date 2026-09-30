@@ -2,6 +2,14 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 
+/**
+ * Endpoint AJAX (JSON) : enregistre le thème d'affichage choisi par
+ * l'utilisateur (assets/js/themes.js), en base et dans la session.
+ *
+ * Accès : tout utilisateur connecté, POST avec jeton CSRF.
+ * POST : theme, parmi la liste blanche ci-dessous.
+ * Table écrite : utilisateur (colonne themePreference).
+ */
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {

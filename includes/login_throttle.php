@@ -11,6 +11,10 @@ const LOGIN_THROTTLE_WINDOW = 900;          // secondes (15 min)
 const LOGIN_THROTTLE_MAX_PER_EMAIL = 5;
 const LOGIN_THROTTLE_MAX_PER_IP = 20;
 
+/**
+ * Dossier des compteurs (HCH_THROTTLE_DIR, sinon dossier temporaire du
+ * système), créé au besoin avec des droits restreints.
+ */
 function loginThrottleDir(): string {
     $dir = getenv('HCH_THROTTLE_DIR') ?: (sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'smartautotrack_login_throttle');
     if (!is_dir($dir)) {
@@ -19,6 +23,7 @@ function loginThrottleDir(): string {
     return $dir;
 }
 
+/** Fichier du compteur d'une clé ; la clé est hachée (l'email n'apparaît pas en clair sur le disque). */
 function loginThrottleFile(string $key): string {
     return loginThrottleDir() . DIRECTORY_SEPARATOR . hash('sha256', $key) . '.json';
 }
@@ -39,6 +44,13 @@ function loginThrottleFailures(string $key, ?int $now = null): array {
     }));
 }
 
+/**
+ * Clés surveillées pour une tentative, avec leur nombre maximal d'échecs
+ * dans la fenêtre. L'email est normalisé (minuscules, sans espaces) pour
+ * qu'une variante de casse ne contourne pas la limite.
+ *
+ * @return array<string, int> clé => maximum autorisé
+ */
 function loginThrottleKeys(string $email, string $ip): array {
     return [
         'email:' . strtolower(trim($email)) => LOGIN_THROTTLE_MAX_PER_EMAIL,
@@ -63,6 +75,7 @@ function loginThrottleRetryAfter(string $email, string $ip, ?int $now = null): i
     return $wait;
 }
 
+/** Enregistre un échec de connexion pour l'email ET pour l'IP (écriture verrouillée). */
 function loginThrottleRecordFailure(string $email, string $ip, ?int $now = null): void {
     $now = $now ?? time();
     foreach (array_keys(loginThrottleKeys($email, $ip)) as $key) {

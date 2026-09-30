@@ -12,6 +12,10 @@
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/http_client.php';
 
+/**
+ * Erreur de l'assistant : getMessage() est affichable à tout utilisateur,
+ * $detail (cause technique) est réservé à l'administrateur.
+ */
 class AiException extends RuntimeException {
     /** Détail technique, affiché seulement à un administrateur. */
     public string $detail;
@@ -22,16 +26,29 @@ class AiException extends RuntimeException {
     }
 }
 
+// Historique conservé en session (messages user + assistant), longueur max
+// d'une question, et limite de débit par utilisateur.
 const AI_HISTORY_LENGTH = 10;
 const AI_MAX_MESSAGE_LENGTH = 1000;
 const AI_RATE_LIMIT = 20;            // messages par fenêtre
 const AI_RATE_WINDOW = 600;          // secondes
 
+/** L'assistant est utilisable seulement si un jeton Hugging Face est configuré. */
 function aiIsConfigured(): bool {
     return (string)appConfig('HF_TOKEN', '') !== '';
 }
 
-/** @param array<int, array{role:string, content:string}> $messages */
+/**
+ * Envoie une conversation au modèle (endpoint chat/completions compatible
+ * OpenAI) et renvoie le texte de la réponse.
+ *
+ * @param array<int, array{role:string, content:string}> $messages
+ *        Message système + historique + question, dans l'ordre.
+ * @param int $maxTokens Longueur maximale de la réponse.
+ * @return string Réponse du modèle, jamais vide.
+ * @throws AiException non configuré, service injoignable, jeton refusé,
+ *         quota atteint ou réponse vide.
+ */
 function aiChat(array $messages, int $maxTokens = 700): string {
     if (!aiIsConfigured()) {
         throw new AiException('L\'assistant IA n\'est pas configuré.', 'HF_TOKEN absent de la configuration.');
@@ -93,6 +110,13 @@ function aiRows(PDO $conn, string $sql, array $params = []): array {
     }
 }
 
+/**
+ * Contexte envoyé au modèle pour un client : uniquement SES véhicules,
+ * anomalies non résolues, interventions et réparations récentes (filtrés
+ * par idClient), jamais les données d'un autre client.
+ *
+ * @return string Texte brut, une ligne par élément.
+ */
 function aiClientContext(PDO $conn, int $clientId): string {
     $lines = ['Date du jour : ' . date('d/m/Y')];
 
@@ -143,6 +167,12 @@ function aiClientContext(PDO $conn, int $clientId): string {
     return implode("\n", $lines);
 }
 
+/**
+ * Contexte envoyé au modèle pour un administrateur : uniquement des totaux
+ * et des agrégats (par statut, par garage, par technicien), aucune donnée
+ * personnelle détaillée. Chaque requête est indépendante : si l'une échoue,
+ * sa section affiche « aucune donnée » (voir aiRows()).
+ */
 function aiAdminContext(PDO $conn): string {
     $lines = ['Date du jour : ' . date('d/m/Y')];
 
@@ -183,6 +213,12 @@ function aiAdminContext(PDO $conn): string {
     return implode("\n", $lines);
 }
 
+/**
+ * Consignes système du modèle selon le rôle (supervision pour l'admin,
+ * aide à l'entretien pour le client), suivies des données de contexte.
+ * Règle commune : ne jamais inventer de données ni poser de diagnostic
+ * mécanique définitif.
+ */
 function aiSystemPrompt(string $role, string $context): string {
     if ($role === ROLE_ADMIN) {
         return "Tu es l'assistant de supervision de SmartAutoTrack, une plateforme camerounaise de suivi automobile "
@@ -223,11 +259,16 @@ function aiAllowMessage(?int $now = null): bool {
     return true;
 }
 
-/** @return array<int, array{role:string, content:string}> */
+/**
+ * Historique de conversation en session, séparé par rôle.
+ *
+ * @return array<int, array{role:string, content:string}>
+ */
 function aiHistory(string $role): array {
     return $_SESSION['ai_history'][$role] ?? [];
 }
 
+/** Ajoute un échange question/réponse à l'historique, tronqué à AI_HISTORY_LENGTH messages. */
 function aiRemember(string $role, string $question, string $answer): void {
     $history = aiHistory($role);
     $history[] = ['role' => 'user', 'content' => $question];
@@ -235,6 +276,7 @@ function aiRemember(string $role, string $question, string $answer): void {
     $_SESSION['ai_history'][$role] = array_slice($history, -AI_HISTORY_LENGTH);
 }
 
+/** Efface l'historique de conversation (bouton « Nouvelle conversation »). */
 function aiResetHistory(string $role): void {
     unset($_SESSION['ai_history'][$role]);
 }
