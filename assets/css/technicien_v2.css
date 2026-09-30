@@ -37,6 +37,12 @@
 
 /* ---------- Sidebar ---------- */
 .tv2-sidebar { width: 272px; flex-shrink: 0; background: var(--t-sidebar-bg); display: flex; flex-direction: column; padding: 26px 18px; box-sizing: border-box; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+
+/* ---------- Menu mobile (bouton + rideau) : voir assets/js/main.js ---------- */
+.tv2-menu-toggle { display: none; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--t-border); background: #FFFFFF; color: var(--t-text); cursor: pointer; margin-bottom: 14px; flex-shrink: 0; }
+.tv2-nav-backdrop { display: none; position: fixed; inset: 0; background: rgba(15,18,38,0.5); z-index: 290; }
+.tv2-nav-backdrop.is-open { display: block; }
+body.nav-open { overflow: hidden; }
 .tv2-sidebar-logo { display: flex; align-items: center; justify-content: center; padding: 4px 8px 20px 8px; border-bottom: 1px solid rgba(255,255,255,0.14); margin-bottom: 20px; }
 .tv2-sidebar-logo img { display: block; }
 .tv2-nav-label { font-size: 12.5px; font-weight: 700; letter-spacing: 0.08em; color: rgba(255,255,255,0.55); text-transform: uppercase; padding: 0 10px; margin-bottom: 8px; }
@@ -199,10 +205,13 @@
 }
 @media (max-width: 720px) {
     .tv2-shell { flex-direction: column; }
-    .tv2-sidebar { width: 100%; height: auto; position: relative; }
+    .tv2-sidebar { position: fixed; top: 0; left: 0; width: min(82vw, 300px); height: 100vh; z-index: 300; transform: translateX(-100%); transition: transform .25s ease; }
+    .tv2-sidebar.is-open { transform: translateX(0); box-shadow: 10px 0 28px rgba(15,18,38,0.25); }
+    .tv2-menu-toggle { display: flex; }
     .tv2-main { padding: 22px 18px 40px; }
     .tv2-stats { grid-template-columns: 1fr 1fr; }
     .tv2-filterbar { flex-direction: column; align-items: stretch; }
+    .tv2-filterbar-search { flex-basis: auto; }
     .tv2-filterbar select { width: 100%; }
     .tv2-page-head { flex-direction: column; align-items: stretch; }
     .tv2-form-row { grid-template-columns: 1fr; }

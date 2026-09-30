@@ -37,6 +37,12 @@
 /* ---------- Sidebar : bleu nuit, plus sombre que le sidebar client, pour
    marquer "centre de contrôle" plutôt qu'espace personnel ---------- */
 .av2-sidebar { width: 272px; flex-shrink: 0; background: var(--a-sidebar-bg); display: flex; flex-direction: column; padding: 22px 16px; box-sizing: border-box; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+
+/* ---------- Menu mobile (bouton + rideau) : voir assets/js/main.js ---------- */
+.av2-menu-toggle { display: none; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--a-border); background: #FFFFFF; color: var(--a-text); cursor: pointer; margin-bottom: 14px; flex-shrink: 0; }
+.av2-nav-backdrop { display: none; position: fixed; inset: 0; background: rgba(15,18,38,0.5); z-index: 290; }
+.av2-nav-backdrop.is-open { display: block; }
+body.nav-open { overflow: hidden; }
 .av2-sidebar-logo { display: flex; align-items: center; justify-content: center; padding: 4px 8px 16px 8px; border-bottom: 1px solid rgba(255,255,255,0.14); margin-bottom: 14px; }
 .av2-sidebar-logo img { display: block; }
 .av2-nav-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; color: rgba(255,255,255,0.45); text-transform: uppercase; padding: 12px 10px 6px; }
@@ -197,7 +203,7 @@
 .av2-ai-input input::placeholder { color: rgba(255,255,255,0.55); }
 
 @media (max-width: 1200px) {
-    .av2-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .av2-stats, .av2-stats.av2-stats-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 1100px) {
     .av2-body { grid-template-columns: 1fr; }
@@ -205,10 +211,13 @@
 }
 @media (max-width: 720px) {
     .av2-shell { flex-direction: column; }
-    .av2-sidebar { width: 100%; height: auto; position: relative; }
+    .av2-sidebar { position: fixed; top: 0; left: 0; width: min(82vw, 300px); height: 100vh; z-index: 300; transform: translateX(-100%); transition: transform .25s ease; }
+    .av2-sidebar.is-open { transform: translateX(0); box-shadow: 10px 0 28px rgba(15,18,38,0.25); }
+    .av2-menu-toggle { display: flex; }
     .av2-main { padding: 22px 18px 40px; }
-    .av2-stats { grid-template-columns: 1fr 1fr; }
+    .av2-stats, .av2-stats.av2-stats-3 { grid-template-columns: 1fr 1fr; }
     .av2-filterbar { flex-direction: column; align-items: stretch; }
+    .av2-filterbar-search { flex-basis: auto; }
     .av2-filterbar select { width: 100%; }
     .av2-page-head { flex-direction: column; align-items: stretch; }
 }

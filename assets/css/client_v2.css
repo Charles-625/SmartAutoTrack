@@ -69,6 +69,12 @@
 .v2-usercard-logout { flex-shrink: 0; display: flex; }
 .v2-sidebar.v2-sidebar-entreprise { background: var(--v2-sidebar-bg-entreprise); }
 
+/* ---------- Menu mobile (bouton + rideau) : voir assets/js/main.js ---------- */
+.v2-menu-toggle { display: none; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--v2-border); background: #FFFFFF; color: var(--v2-text); cursor: pointer; margin-bottom: 14px; flex-shrink: 0; }
+.v2-nav-backdrop { display: none; position: fixed; inset: 0; background: rgba(15,18,38,0.5); z-index: 290; }
+.v2-nav-backdrop.is-open { display: block; }
+body.nav-open { overflow: hidden; }
+
 /* ---------- Tag "Espace Entreprise" ---------- */
 .v2-entreprise-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--v2-entreprise); background: var(--v2-entreprise-bg); border-radius: 20px; padding: 4px 11px; margin-bottom: 8px; }
 .v2-entreprise-tag svg { flex-shrink: 0; }
@@ -119,6 +125,7 @@
 
 /* ---------- Vehicle cards ---------- */
 .v2-vehicles-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.v2-vehicles-grid.v2-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .v2-vehicle-card { border: 1px solid var(--v2-border); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 .v2-vehicle-card.has-anomaly { border-color: #F3C8CB; }
 .v2-vehicle-top { display: flex; justify-content: space-between; align-items: flex-start; }
@@ -241,13 +248,18 @@
     .v2-body { grid-template-columns: 1fr; }
     .v2-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .v2-vehicles-grid { grid-template-columns: 1fr; }
+    .v2-vehicles-grid.v2-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
+    .v2-vehicles-grid.v2-grid-3 { grid-template-columns: 1fr; }
     .v2-shell { flex-direction: column; }
-    .v2-sidebar { width: 100%; height: auto; position: relative; }
+    .v2-sidebar { position: fixed; top: 0; left: 0; width: min(82vw, 300px); height: 100vh; z-index: 300; transform: translateX(-100%); transition: transform .25s ease; }
+    .v2-sidebar.is-open { transform: translateX(0); box-shadow: 10px 0 28px rgba(15,18,38,0.25); }
+    .v2-menu-toggle { display: flex; }
     .v2-main { padding: 22px 18px 40px; }
     .v2-stats { grid-template-columns: 1fr 1fr; }
     .v2-filterbar { flex-direction: column; align-items: stretch; }
+    .v2-filterbar-search { flex-basis: auto; }
     .v2-filterbar select { width: 100%; }
     .v2-page-head { flex-direction: column; align-items: stretch; }
 }

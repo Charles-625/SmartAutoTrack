@@ -322,8 +322,8 @@ include '../includes/header.php';
                                     <div class="success-rate">
                                         <div class="rate-bar">
                                             <div class="rate-fill" style="width: <?php echo $success_rate; ?>%"></div>
+                                            <span class="rate-text"><?php echo round($success_rate, 1); ?>%</span>
                                         </div>
-                                        <span class="rate-text"><?php echo round($success_rate, 1); ?>%</span>
                                     </div>
                                 </td>
                             </tr>

@@ -556,3 +556,64 @@ $(document).ajaxError(function(event, xhr, settings, thrownError) {
         showToast('Erreur serveur. Veuillez réessayer plus tard.', 'error');
     }
 });
+
+// ============================================================
+// Menu mobile des tableaux de bord (client/admin/garage/technicien).
+// Ces 4 espaces partagent le même gabarit "{préfixe}-shell / {préfixe}-sidebar
+// / {préfixe}-main" (voir assets/css/{client,admin,garage,technicien}_v2.css),
+// seul le préfixe change. En dessous de 720px la sidebar passe en tiroir
+// (position: fixed, masquée hors écran) : ce script détecte le préfixe
+// présent sur la page, injecte le bouton hamburger + le rideau, et gère
+// l'ouverture/fermeture — une seule fois pour les 4 espaces, sans toucher
+// aux ~55 pages qui utilisent ce gabarit.
+// ============================================================
+$(function () {
+    var prefix = ['v2', 'av2', 'gv2', 'tv2'].find(function (p) {
+        return document.querySelector('.' + p + '-shell');
+    });
+    if (!prefix) return;
+
+    var shell = document.querySelector('.' + prefix + '-shell');
+    var sidebar = shell.querySelector('.' + prefix + '-sidebar');
+    var main = shell.querySelector('.' + prefix + '-main');
+    if (!sidebar || !main) return;
+
+    var backdrop = document.createElement('div');
+    backdrop.className = prefix + '-nav-backdrop';
+    shell.appendChild(backdrop);
+
+    var toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = prefix + '-menu-toggle';
+    toggle.setAttribute('aria-label', 'Ouvrir le menu');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.innerHTML = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M3 6H21M3 12H21M3 18H21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+    main.insertBefore(toggle, main.firstChild);
+
+    function closeNav() {
+        sidebar.classList.remove('is-open');
+        backdrop.classList.remove('is-open');
+        document.body.classList.remove('nav-open');
+        toggle.setAttribute('aria-expanded', 'false');
+    }
+    function openNav() {
+        sidebar.classList.add('is-open');
+        backdrop.classList.add('is-open');
+        document.body.classList.add('nav-open');
+        toggle.setAttribute('aria-expanded', 'true');
+    }
+
+    toggle.addEventListener('click', function () {
+        if (sidebar.classList.contains('is-open')) closeNav(); else openNav();
+    });
+    backdrop.addEventListener('click', closeNav);
+    sidebar.querySelectorAll('a').forEach(function (link) {
+        link.addEventListener('click', closeNav);
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeNav();
+    });
+    window.addEventListener('resize', function () {
+        if (window.innerWidth > 720) closeNav();
+    });
+});

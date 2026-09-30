@@ -341,7 +341,7 @@ include '../includes/header.php';
 
         <?php else: ?>
         <!-- ==================== VUE PARTICULIER : CARTES (inchangée) ==================== -->
-        <div class="v2-vehicles-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 22px;">
+        <div class="v2-vehicles-grid v2-grid-3" style="margin-top: 22px;">
             <?php foreach ($vehicules as $v):
                 $anomalyCount = $anomaliesCountParVehicule[$v['id']] ?? 0;
                 $hasAnomaly = $anomalyCount > 0;
