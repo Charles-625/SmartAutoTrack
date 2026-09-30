@@ -43,9 +43,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $modele = sanitize($_POST['modele'] ?? '');
             $immatriculation = sanitize($_POST['immatriculation'] ?? '');
 
-            if (empty($marque)) $errors[] = 'La marque du véhicule est requise.';
-            if (empty($modele)) $errors[] = 'Le modèle du véhicule est requis.';
-            if (empty($immatriculation)) $errors[] = 'L\'immatriculation est requise.';
+            // Le véhicule n'est demandé qu'aux particuliers : une entreprise
+            // ajoute sa flotte depuis son dashboard après inscription.
+            if ($type_client === 'PARTICULIER') {
+                if (empty($marque)) $errors[] = 'La marque du véhicule est requise.';
+                if (empty($modele)) $errors[] = 'Le modèle du véhicule est requis.';
+                if (empty($immatriculation)) $errors[] = 'L\'immatriculation est requise.';
+            }
 
             if ($type_client === 'ENTREPRISE' && empty($raison_sociale)) {
                 $errors[] = 'La raison sociale est requise pour un compte entreprise.';
@@ -98,15 +102,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($type_client === 'ENTREPRISE') {
                         $conn->prepare("INSERT INTO entreprise (idClient, raisonSociale, adresse) VALUES (?, ?, ?)")
                             ->execute([$user_id, $raison_sociale, $adresse_entreprise ?: null]);
+                        // Pas de véhicule à l'inscription pour une entreprise : elle
+                        // ajoutera sa flotte depuis son dashboard.
                     } else {
                         $conn->prepare("INSERT INTO particulier (idClient, adresse) VALUES (?, NULL)")->execute([$user_id]);
-                    }
 
-                    $stmt = $conn->prepare("
-                        INSERT INTO vehicule (idClient, marque, modele, immatriculation)
-                        VALUES (?, ?, ?, ?)
-                    ");
-                    $stmt->execute([$user_id, $marque, $modele, $immatriculation]);
+                        $stmt = $conn->prepare("
+                            INSERT INTO vehicule (idClient, marque, modele, immatriculation)
+                            VALUES (?, ?, ?, ?)
+                        ");
+                        $stmt->execute([$user_id, $marque, $modele, $immatriculation]);
+                    }
                 }
 
                 // Si c'est un technicien, créer sa fiche technicien (en attente de validation)
@@ -337,10 +343,12 @@ include '../includes/header.php';
                         <label class="form-label">Adresse de l'entreprise</label>
                         <input type="text" name="adresse_entreprise" class="form-control" value="<?php echo htmlspecialchars($_POST['adresse_entreprise'] ?? ''); ?>">
                     </div>
+                    <p class="form-text">Vous pourrez ajouter les véhicules de votre flotte depuis votre tableau de bord une fois inscrit.</p>
                 </div>
             </div>
 
-            <!-- Informations véhicule (pour les clients) -->
+            <!-- Informations véhicule (particulier uniquement : une entreprise
+                 ajoute sa flotte depuis son dashboard, voir #entreprise-info) -->
             <div id="vehicle-info" class="vehicle-section" style="display: none;">
                 <h3>Informations du véhicule</h3>
                 <div class="form-row">
@@ -614,18 +622,34 @@ include '../includes/header.php';
 
 <script>
 $(document).ready(function() {
+    // Bascule Particulier / Entreprise : la raison sociale n'est requise que
+    // pour une entreprise, et à l'inverse le véhicule n'est demandé qu'à un
+    // particulier (une entreprise l'ajoutera depuis son dashboard).
+    function updateClientTypeSections() {
+        const isEntreprise = $('input[name="type_client"]:checked').val() === 'ENTREPRISE';
+        if (isEntreprise) {
+            $('#entreprise-info').slideDown();
+            $('#vehicle-info').slideUp();
+        } else {
+            $('#entreprise-info').slideUp();
+            $('#vehicle-info').slideDown();
+        }
+        $('input[name="raison_sociale"]').prop('required', isEntreprise);
+        $('input[name="marque"], input[name="modele"], input[name="immatriculation"]').prop('required', !isEntreprise);
+    }
+
     $('input[name="role"]').change(function() {
         const role = $(this).val();
 
         if (role === 'client') {
             $('#client-type-section').slideDown();
-            $('#vehicle-info').slideDown();
             $('#technician-info').slideUp();
-            $('input[name="marque"], input[name="modele"], input[name="immatriculation"]').prop('required', true);
             $('textarea[name="competences"], textarea[name="experience"]').prop('required', false);
+            updateClientTypeSections();
         } else if (role === 'technicien') {
             $('#client-type-section').slideUp();
             $('#vehicle-info').slideUp();
+            $('#entreprise-info').slideUp();
             $('#technician-info').slideDown();
             $('input[name="marque"], input[name="modele"], input[name="immatriculation"]').prop('required', false);
             $('textarea[name="competences"], textarea[name="experience"]').prop('required', true);
@@ -633,17 +657,7 @@ $(document).ready(function() {
         }
     });
 
-    // Bascule Particulier / Entreprise : affiche la raison sociale, requise
-    // uniquement pour une entreprise.
-    $('input[name="type_client"]').change(function() {
-        const isEntreprise = $(this).val() === 'ENTREPRISE';
-        if (isEntreprise) {
-            $('#entreprise-info').slideDown();
-        } else {
-            $('#entreprise-info').slideUp();
-        }
-        $('input[name="raison_sociale"]').prop('required', isEntreprise);
-    });
+    $('input[name="type_client"]').change(updateClientTypeSections);
 
     // Validation en temps réel
     $('form').on('submit', function(e) {
@@ -656,9 +670,11 @@ $(document).ready(function() {
         }
         
         if (role === 'client') {
-            const required = ['nom', 'prenom', 'email', 'telephone', 'marque', 'modele', 'immatriculation', 'mot_de_passe', 'confirmation'];
+            const required = ['nom', 'prenom', 'email', 'telephone', 'mot_de_passe', 'confirmation'];
             if ($('input[name="type_client"]:checked').val() === 'ENTREPRISE') {
                 required.push('raison_sociale');
+            } else {
+                required.push('marque', 'modele', 'immatriculation');
             }
             for (let field of required) {
                 if (!$(`[name="${field}"]`).val().trim()) {
