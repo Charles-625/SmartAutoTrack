@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once '../includes/ai.php';
+require_once '../includes/subscription.php';
 
 /**
  * Assistant IA de l'espace client.
@@ -12,7 +13,10 @@ require_once '../includes/ai.php';
  * AJAX depuis assets/js/assistant.js ; la logique IA est dans includes/ai.php.
  * Aucune action POST ici. Sans clé d'IA configurée (aiIsConfigured()), la
  * page le signale au lieu de proposer la saisie.
- * Tables lues : intervention (badge sidebar).
+ * Client gratuit : affiche les messages encore disponibles aujourd'hui
+ * (subscriptionAiRemaining(), limite SUB_FREE_AI_PER_DAY), tenus à jour par
+ * assets/js/assistant.js ; rien n'est affiché en Premium ou sans migration.
+ * Tables lues : intervention (badge sidebar), abonnement et ia_usage (quota).
  */
 requireRole('client');
 
@@ -31,6 +35,8 @@ $stmtBadge->execute([$_SESSION['user_id']]);
 $interventionsActivesCount = (int)$stmtBadge->fetchColumn();
 
 $aiEnabled = aiIsConfigured();
+// Messages gratuits restants aujourd'hui ; null = illimité (Premium, ou migration non appliquée).
+$aiRemaining = subscriptionAiRemaining($conn, (int)$_SESSION['user_id']);
 // Questions proposées en un clic pour amorcer la conversation.
 $suggestions = [
     'Quand dois-je faire vidanger mon véhicule ?',
@@ -80,6 +86,9 @@ include '../includes/header.php';
                         <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M3 12L21 3L14 21L11 13L3 12Z" stroke="#FFFFFF" stroke-width="1.6" stroke-linejoin="round"/></svg>
                     </button>
                 </form>
+                <?php if ($aiRemaining !== null): ?>
+                    <p class="v2-ai-foot" style="margin-top:10px;">Formule gratuite : <strong id="aiRemaining"><?php echo (int)$aiRemaining; ?></strong> message(s) restant(s) aujourd'hui sur <?php echo (int)SUB_FREE_AI_PER_DAY; ?>. <a href="abonnement.php" style="color:#8DE0FF; font-weight:600;">Premium : assistant illimité</a></p>
+                <?php endif; ?>
                 <div class="ai-chat-toolbar">
                     <button type="button" class="ai-chat-reset" id="aiChatReset">Nouvelle conversation</button>
                 </div>

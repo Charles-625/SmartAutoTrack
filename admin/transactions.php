@@ -4,6 +4,7 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 require_once '../includes/payments.php';
+require_once '../includes/subscription.php';
 
 /**
  * Supervision des paiements clients (espace Administrateur).
@@ -12,8 +13,12 @@ require_once '../includes/payments.php';
  * Lecture seule. Filtre GET `statut` (PAYE, EN_ATTENTE, ECHOUE, ANNULE) ;
  * au plus 200 transactions affichées.
  *
- * Tables lues : paiement, utilisateur, intervention.
- * Liens : includes/payments.php (paymentsReady), webhooks/campay.php.
+ * Un paiement d'abonnement Premium (paiement.idAbonnement renseigné, sans
+ * intervention) est libellé « Abonnement Premium » dans la colonne Intervention.
+ *
+ * Tables lues : paiement, utilisateur, intervention, abonnement (périodicité).
+ * Liens : includes/payments.php (paymentsReady), includes/subscription.php
+ * (subscriptionsReady), webhooks/campay.php.
  */
 requireRole('admin');
 
@@ -23,6 +28,8 @@ $conn = $db->getConnection();
 // sélectionnées que si elles existent, pour que la page marche aussi sur un
 // schéma plus ancien.
 $campayColumns = paymentsReady($conn);
+// Vrai si la migration des abonnements est appliquée (colonne idAbonnement).
+$subscriptionColumns = subscriptionsReady($conn);
 
 // La table `paiement` existe déjà dans le schéma : supervision réelle,
 // aucune transaction fictive créée pour peupler cette page.
@@ -36,9 +43,11 @@ $stmt = $conn->prepare("
     SELECT p.idPaiement AS id, p.montant, p.datePaiement, p.typePaiement, p.statut,
            u.nom, u.prenom, i.type AS intervention_type
            " . ($campayColumns ? ", p.referenceCampay, p.operateur, p.telephone, p.messageErreur" : "") . "
+           " . ($subscriptionColumns ? ", p.idAbonnement, ab.periodicite AS abonnement_periodicite" : "") . "
     FROM paiement p
     JOIN utilisateur u ON u.idUtilisateur = p.idClient
     LEFT JOIN intervention i ON i.idIntervention = p.idIntervention
+    " . ($subscriptionColumns ? "LEFT JOIN abonnement ab ON ab.idAbonnement = p.idAbonnement" : "") . "
     WHERE $whereSql
     ORDER BY p.datePaiement DESC
     LIMIT 200
@@ -114,7 +123,7 @@ include '../includes/header.php';
                                 <tr>
                                     <td>#<?php echo (int)$p['id']; ?><?php if (!empty($p['referenceCampay'])): ?><br><small title="Référence CamPay"><?php echo h($p['referenceCampay']); ?></small><?php endif; ?></td>
                                     <td><?php echo h($p['prenom'] . ' ' . $p['nom']); ?></td>
-                                    <td><?php echo h($p['intervention_type'] ?: '—'); ?></td>
+                                    <td><?php echo h(!empty($p['idAbonnement']) ? 'Abonnement Premium' . ($p['abonnement_periodicite'] ? ' (' . strtolower($p['abonnement_periodicite']) . ')' : '') : ($p['intervention_type'] ?: '—')); ?></td>
                                     <td><?php echo number_format((float)$p['montant'], 0, ',', ' '); ?> XAF</td>
                                     <td><?php echo h($p['datePaiement'] ? date('d/m/Y', strtotime($p['datePaiement'])) : '—'); ?></td>
                                     <td><?php echo h(($p['typePaiement'] ?: '—') . (!empty($p['operateur']) ? ' · ' . $p['operateur'] : '')); ?><?php if (!empty($p['telephone'])): ?><br><small><?php echo h($p['telephone']); ?></small><?php endif; ?></td>

@@ -56,9 +56,11 @@ $vehiculesEnPanne = (int)$conn->query("SELECT COUNT(*) FROM vehicule WHERE etat 
 
 // `vehicule.etat` est un varchar libre (pas un ENUM) : ces libellés couvrent
 // les valeurs réellement utilisées par l'application (BON/EN_ENTRETIEN/
-// EN_PANNE/HORS_SERVICE) ; toute autre valeur retombe sur son texte brut.
-$etatLabels = ['BON' => 'Bon état', 'EN_ENTRETIEN' => 'En entretien', 'EN_PANNE' => 'En panne', 'HORS_SERVICE' => 'Hors service'];
-$etatBadge = ['BON' => 'ok', 'EN_ENTRETIEN' => 'info', 'EN_PANNE' => 'bad', 'HORS_SERVICE' => 'neutral'];
+// EN_PANNE/HORS_SERVICE, et A_SURVEILLER écrit par le rapport de fin
+// d'intervention, includes/repair_report.php) ; toute autre valeur retombe
+// sur son texte brut.
+$etatLabels = ['BON' => 'Bon état', 'EN_ENTRETIEN' => 'En entretien', 'A_SURVEILLER' => 'À surveiller', 'EN_PANNE' => 'En panne', 'HORS_SERVICE' => 'Hors service'];
+$etatBadge = ['BON' => 'ok', 'EN_ENTRETIEN' => 'info', 'A_SURVEILLER' => 'info', 'EN_PANNE' => 'bad', 'HORS_SERVICE' => 'neutral'];
 
 $pageTitle = 'Véhicules';
 $hideNavbar = true;

@@ -9,6 +9,9 @@ require_once 'includes/helpers.php';
  *
  * Accès : rôle « garage ».
  * Page en lecture seule. Filtres GET : categorie, date_from, date_to.
+ * Un rapport de fin d'intervention (description multi-lignes, voir
+ * activity_log_is_report()) s'affiche replié sous « Voir le rapport » au
+ * lieu d'être collé à la ligne de contexte.
  * Table lue : journalactivites, uniquement via activity_log_fetch()
  * (includes/activity_log.php), qui applique le cloisonnement par garage.
  */
@@ -111,12 +114,15 @@ include '../includes/header.php';
                                     <?php else: ?>
                                         <?php echo h($categorieLabels[$j['categorie']] ?? 'Activité'); ?>
                                     <?php endif; ?>
-                                    <?php echo h($j['description'] ? ' — ' . $j['description'] : ''); ?>
+                                    <?php if (!activity_log_is_report($j)): ?><?php echo h($j['description'] ? ' — ' . $j['description'] : ''); ?><?php endif; ?>
                                 </div>
                                 <div class="gv2-timeline-time">
                                     <?php echo h(v2_relative($j['dateHeure'], $dbNow)); ?> · <?php echo h(date('d/m/Y H:i', strtotime($j['dateHeure']))); ?>
                                     <?php if ($j['acteur_nom']): ?> · par <?php echo h($j['acteur_prenom'] . ' ' . $j['acteur_nom']); ?><?php endif; ?>
                                 </div>
+                                <?php if (activity_log_is_report($j)): ?>
+                                    <details style="margin-top:6px;"><summary style="cursor:pointer; font-size:12.5px; font-weight:700; color:#0F766E;">Voir le rapport</summary><div style="white-space:pre-line; font-size:13px; line-height:1.55; margin-top:6px; padding:10px 12px; border-radius:10px; background:#EEF2F2;"><?php echo h($j['description']); ?></div></details>
+                                <?php endif; ?>
                             </div>
                         </div>
                     <?php endforeach; ?>

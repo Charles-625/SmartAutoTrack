@@ -2,12 +2,17 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
+require_once '../includes/subscription.php';
 
 /**
  * Véhicules du client : liste, ajout, modification et suppression.
  *
  * Accès : rôle client uniquement.
- * POST ?action=add (CSRF)       : ajoute un véhicule au client.
+ * POST action=add (CSRF)        : ajoute un véhicule au client, dans la limite
+ *                                 de sa formule (subscriptionVehicleLimit() :
+ *                                 1 ou 3 véhicules en gratuit, davantage en
+ *                                 Premium). Les véhicules déjà enregistrés
+ *                                 restent toujours consultables et modifiables.
  * POST ?action=edit&id=N (CSRF) : modifie un véhicule du client.
  * GET  ?action=delete&id=N      : supprime un véhicule du client ; la base
  *                                 refuse si des interventions y sont liées.
@@ -15,7 +20,9 @@ require_once '../config/roles.php';
  *     statut, anomalie ('avec' | 'sans'), page (20 véhicules par page).
  * Règles de saisie : validateModel(), validatePlate(), normalizePlate()…
  * (config/config.php) ; l'immatriculation doit être unique.
- * Table écrite : vehicule ; lues : vehicule, anomalie, intervention (badge).
+ * Table écrite : vehicule ; lues : vehicule, anomalie, intervention (badge),
+ * abonnement (limite de véhicules, via includes/subscription.php ; aucune
+ * limite tant que la migration des abonnements n'est pas appliquée).
  * Fichiers liés : ajax/get_vehicle.php (pré-remplissage du formulaire
  * d'édition), assets/js/main.js (filtres de saisie).
  */
@@ -30,14 +37,29 @@ $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $clientRoleLabel = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE') ? 'Client entreprise' : 'Client particulier';
 $isEntreprise = (($profile['typeClient'] ?? 'PARTICULIER') === 'ENTREPRISE');
 
-$action = $_GET['action'] ?? '';
+// L'action vient de l'URL (?action=edit&id=N, ?action=delete&id=N) ou, pour
+// l'ajout, du champ caché « action » du formulaire, posté sur vehicles.php.
+$action = $_GET['action'] ?? ($_POST['action'] ?? '');
 $vehicle_id = $_GET['id'] ?? null;
 $errors = [];
+$limitError = null;
+
+// Limite de véhicules de la formule (gratuit ou Premium). Sans la migration
+// des abonnements, aucune limite : le comportement d'origine est conservé.
+$vehicleLimit = subscriptionsReady($conn)
+    ? subscriptionVehicleLimit($isEntreprise ? 'ENTREPRISE' : 'PARTICULIER', subscriptionActive($conn, (int)$_SESSION['user_id']))
+    : null;
 
 // Ajouter un véhicule
 if ($action === 'add' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $errors[] = 'Session expirée, merci de réessayer.';
+    } elseif ($vehicleLimit !== null && subscriptionVehicleCount($conn, (int)$_SESSION['user_id']) >= $vehicleLimit) {
+        // Contrôle serveur de la limite : le bouton masqué ne suffit pas. Seuls
+        // les nouveaux ajouts sont bloqués, jamais les véhicules existants.
+        // Message affiché avec un lien vers abonnement.php (voir plus bas).
+        $limitError = 'Vous avez atteint la limite de ' . $vehicleLimit . ' véhicule' . ($vehicleLimit > 1 ? 's' : '')
+            . ' de votre formule. Passez au Premium pour suivre davantage de véhicules.';
     } else {
         $marque = sanitize($_POST['marque'] ?? '');
         $modele = sanitize($_POST['modele'] ?? '');
@@ -59,11 +81,22 @@ if ($action === 'add' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!validateDigitsOnly(trim($_POST['kilometrage'] ?? '')) && trim($_POST['kilometrage'] ?? '') !== '') $errors[] = 'Le kilométrage ne doit contenir que des chiffres.';
 
         if (empty($errors)) {
+            // Transaction + FOR UPDATE sur la ligne client : deux ajouts
+            // simultanés ne peuvent pas dépasser ensemble la limite de la formule
+            // (le nombre de véhicules est recompté sous verrou).
+            $conn->beginTransaction();
             try {
+                $conn->prepare('SELECT idClient FROM client WHERE idClient = ? FOR UPDATE')->execute([$_SESSION['user_id']]);
+                $overLimit = $vehicleLimit !== null && subscriptionVehicleCount($conn, (int)$_SESSION['user_id']) >= $vehicleLimit;
                 // Unicité de l'immatriculation sur toute la base, pas seulement chez ce client.
                 $stmt = $conn->prepare("SELECT idVehicule FROM vehicule WHERE immatriculation = ?");
                 $stmt->execute([$immatriculation]);
-                if ($stmt->fetch()) {
+                if ($overLimit) {
+                    $conn->rollBack();
+                    $limitError = 'Vous avez atteint la limite de ' . $vehicleLimit . ' véhicule' . ($vehicleLimit > 1 ? 's' : '')
+                        . ' de votre formule. Passez au Premium pour suivre davantage de véhicules.';
+                } elseif ($stmt->fetch()) {
+                    $conn->rollBack();
                     $errors[] = 'Cette immatriculation est déjà enregistrée.';
                 } else {
                     $stmt = $conn->prepare("
@@ -71,10 +104,14 @@ if ($action === 'add' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                     ");
                     $stmt->execute([$_SESSION['user_id'], $marque, $modele, $immatriculation, $annee, $couleur, $kilometrage]);
+                    $conn->commit();
                     header('Location: vehicles.php?success=added');
                     exit;
                 }
             } catch (Exception $e) {
+                if ($conn->inTransaction()) {
+                    $conn->rollBack();
+                }
                 $errors[] = 'Erreur lors de l\'ajout du véhicule.';
             }
         }
@@ -148,6 +185,8 @@ if ($action === 'delete' && $vehicle_id) {
 $stmt = $conn->prepare("SELECT COUNT(*) FROM vehicule WHERE idClient = ?");
 $stmt->execute([$_SESSION['user_id']]);
 $totalVehiculesCount = (int)$stmt->fetchColumn();
+// Limite atteinte : le bouton d'ajout devient un lien « Passer au Premium ».
+$limitReached = $vehicleLimit !== null && $totalVehiculesCount >= $vehicleLimit;
 
 // Recherche/filtres/pagination : uniquement pour le client entreprise (parc
 // potentiellement grand). Le client particulier garde la requête d'origine,
@@ -267,6 +306,9 @@ include '../includes/header.php';
         <?php foreach ($errors as $err): ?>
             <div class="v2-alert error"><?php echo h($err); ?></div>
         <?php endforeach; ?>
+        <?php if ($limitError !== null): ?>
+            <div class="v2-alert error"><?php echo h($limitError); ?> <a href="abonnement.php" style="color:inherit; font-weight:700;">Voir l'abonnement Premium →</a></div>
+        <?php endif; ?>
 
         <div class="v2-page-head">
             <div>
@@ -278,9 +320,13 @@ include '../includes/header.php';
                 <?php endif; ?>
                 <div class="v2-kicker"><?php echo h($clientRoleLabel); ?></div>
                 <h1 class="v2-h1"><?php echo $isEntreprise ? 'Mon parc' : 'Mes véhicules'; ?></h1>
-                <p class="v2-sub"><?php echo (int)$totalVehiculesCount; ?> véhicule<?php echo $totalVehiculesCount > 1 ? 's' : ''; ?> <?php echo h($isEntreprise ? 'dans le parc' : 'suivi' . ($totalVehiculesCount > 1 ? 's' : '')); ?></p>
+                <p class="v2-sub"><?php echo (int)$totalVehiculesCount; ?> véhicule<?php echo $totalVehiculesCount > 1 ? 's' : ''; ?> <?php echo h($isEntreprise ? 'dans le parc' : 'suivi' . ($totalVehiculesCount > 1 ? 's' : '')); ?><?php if ($vehicleLimit !== null): ?> · <?php echo (int)$totalVehiculesCount; ?> / <?php echo (int)$vehicleLimit; ?> véhicule<?php echo $vehicleLimit > 1 ? 's' : ''; ?> autorisé<?php echo $vehicleLimit > 1 ? 's' : ''; ?> par votre formule<?php endif; ?></p>
             </div>
-            <button class="v2-btn-primary" id="addVehicleBtn" type="button" style="padding:12px 20px;">+ Ajouter un véhicule</button>
+            <?php if ($limitReached): ?>
+                <a href="abonnement.php" class="v2-btn-primary" style="padding:12px 20px; text-decoration:none;">Passer au Premium</a>
+            <?php else: ?>
+                <button class="v2-btn-primary" id="addVehicleBtn" type="button" style="padding:12px 20px;">+ Ajouter un véhicule</button>
+            <?php endif; ?>
         </div>
 
         <?php if ($isEntreprise): ?>
@@ -415,7 +461,14 @@ include '../includes/header.php';
                 </div>
             <?php endforeach; ?>
 
-            <div class="v2-add-vehicle-card" id="addFirstVehicleBtn">+ Ajouter un véhicule</div>
+            <?php if ($limitReached): ?>
+                <a href="abonnement.php" class="v2-add-vehicle-card" style="text-decoration:none; flex-direction:column; gap:4px; text-align:center;">
+                    Passer au Premium
+                    <span style="font-weight:500; font-size:12.5px; color:#8B90B3;"><?php echo (int)$totalVehiculesCount; ?> / <?php echo (int)$vehicleLimit; ?> véhicule<?php echo $vehicleLimit > 1 ? 's' : ''; ?> — limite de votre formule atteinte</span>
+                </a>
+            <?php else: ?>
+                <div class="v2-add-vehicle-card" id="addFirstVehicleBtn">+ Ajouter un véhicule</div>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
     </main>
@@ -478,7 +531,9 @@ document.addEventListener('DOMContentLoaded', function () {
         actionField.value = 'add';
     }
 
-    document.getElementById('addVehicleBtn').addEventListener('click', function () { openModal('add'); });
+    // Bouton absent quand la limite de véhicules de la formule est atteinte.
+    var addBtn = document.getElementById('addVehicleBtn');
+    if (addBtn) addBtn.addEventListener('click', function () { openModal('add'); });
     var addFirstBtn = document.getElementById('addFirstVehicleBtn');
     if (addFirstBtn) addFirstBtn.addEventListener('click', function () { openModal('add'); });
     document.getElementById('cancelVehicle').addEventListener('click', closeModal);

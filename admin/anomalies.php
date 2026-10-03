@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
+require_once '../includes/anomaly_types.php';
 
 /**
  * Supervision des anomalies détectées sur les véhicules (espace Administrateur).
@@ -11,8 +12,13 @@ require_once 'includes/helpers.php';
  * Lecture seule : aucune action POST. Filtres GET : `statut` (active|resolue),
  * `garage`, `technicien`, `date_from`, `date_to` (bornes de dateDetection).
  *
+ * Colonne « Constatée par » : « Client » pour une anomalie déclarée par le
+ * client dans sa demande d'intervention (reconnue à son entrée de journal
+ * ANOMALY_CLIENT_LOG_NAME écrite par ce client), sinon le technicien de
+ * l'intervention.
+ *
  * Tables lues : anomalie, vehicule, utilisateur (client et technicien),
- * intervention, garage, technicien.
+ * intervention, garage, technicien, journalactivites.
  */
 requireRole('admin');
 
@@ -20,8 +26,9 @@ $db = new Database();
 $conn = $db->getConnection();
 
 // Supervision uniquement — rappel de la règle métier : une anomalie est
-// constatée par un garage/technicien à la suite d'une intervention, jamais
-// créée directement par le client.
+// constatée par un garage/technicien à la suite d'une intervention, ou
+// déclarée par le client en demandant une intervention (motif « Anomalie
+// constatée ») ; jamais créée hors d'une intervention par le client.
 $statutFilter = $_GET['statut'] ?? '';
 $garageFilter = filter_var($_GET['garage'] ?? null, FILTER_VALIDATE_INT);
 $technicienFilter = filter_var($_GET['technicien'] ?? null, FILTER_VALIDATE_INT);
@@ -48,7 +55,9 @@ $stmt = $conn->prepare("
            uc.prenom AS client_prenom, uc.nom AS client_nom,
            i.idIntervention, i.type AS intervention_type,
            ut.prenom AS technicien_prenom, ut.nom AS technicien_nom,
-           g.nomGarage
+           g.nomGarage,
+           EXISTS (SELECT 1 FROM journalactivites j
+                   WHERE j.idAnomalie = a.idAnomalie AND j.nomActivite = ? AND j.idUtilisateur = v.idClient) AS declared_by_client
     FROM anomalie a
     JOIN vehicule v ON v.idVehicule = a.idVehicule
     JOIN utilisateur uc ON uc.idUtilisateur = v.idClient
@@ -59,7 +68,7 @@ $stmt = $conn->prepare("
     ORDER BY a.dateDetection DESC
     LIMIT 200
 ");
-$stmt->execute($params);
+$stmt->execute(array_merge([ANOMALY_CLIENT_LOG_NAME], $params));
 $anomalies = $stmt->fetchAll();
 
 $garagesList = $conn->query("SELECT idGarage, nomGarage FROM garage WHERE statutGarage = 'VALIDE' ORDER BY nomGarage")->fetchAll();
@@ -87,7 +96,7 @@ include '../includes/header.php';
         <div class="av2-page-head">
             <div>
                 <h1 class="av2-h1">Anomalies</h1>
-                <p class="av2-sub">Toutes les anomalies constatées sur la plateforme — toujours par un garage ou un technicien, jamais directement par le client.</p>
+                <p class="av2-sub">Toutes les anomalies constatées sur la plateforme — par un garage ou un technicien, ou signalées par le client dans sa demande d'intervention.</p>
             </div>
         </div>
 
@@ -149,7 +158,7 @@ include '../includes/header.php';
                                     <td><span class="av2-badge <?php echo h($niveauBadge); ?>"><?php echo h(ucfirst(strtolower($a['niveau']))); ?></span></td>
                                     <td><?php if ($a['idIntervention']): ?><?php echo h($a['intervention_type'] ?: 'Intervention'); ?><?php else: ?><span style="color:#8B90B3;">—</span><?php endif; ?></td>
                                     <td><?php if ($a['nomGarage']): ?><?php echo h($a['nomGarage']); ?><?php else: ?><span style="color:#8B90B3;">—</span><?php endif; ?></td>
-                                    <td><?php if ($a['technicien_nom']): ?><?php echo h($a['technicien_prenom'] . ' ' . $a['technicien_nom']); ?><?php else: ?><span style="color:#8B90B3;">—</span><?php endif; ?></td>
+                                    <td><?php if ($a['declared_by_client']): ?>Client<?php elseif ($a['technicien_nom']): ?><?php echo h($a['technicien_prenom'] . ' ' . $a['technicien_nom']); ?><?php else: ?><span style="color:#8B90B3;">—</span><?php endif; ?></td>
                                     <td><?php echo h(date('d/m/Y', strtotime($a['dateDetection']))); ?></td>
                                     <td><span class="av2-badge <?php echo $isActive ? 'bad' : 'ok'; ?>"><?php echo $isActive ? 'Active' : 'Résolue'; ?></span></td>
                                 </tr>

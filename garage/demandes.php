@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
+require_once '../includes/anomaly_types.php';
 
 /**
  * Espace garage — Demandes d'intervention reçues des clients.
@@ -17,8 +18,16 @@ require_once 'includes/helpers.php';
  *   - POST form=refuse : refuser une demande encore non affectée (statut
  *     ANNULEE) ; le client est notifié.
  *   - GET statut=nouvelle|planifiee|en_cours|terminee|refusee|toutes : filtre.
- * Tables : intervention (écriture), technicien, vehicule, utilisateur (lecture),
- *          notifications (écriture), journalactivites (via garage_log()).
+ * Les interventions où le garage est seulement en appui d'un technicien
+ * SmartAutoTrack (affectées par l'admin) n'y figurent pas : elles sont
+ * listées dans garage/interventions.php.
+ * Motif « Anomalie constatée » : la liste affiche le type et la gravité de
+ * l'anomalie déclarée par le client (la première rattachée à l'intervention) ;
+ * les nouvelles demandes portant une anomalie CRITIQUE passent en tête, le
+ * reste garde l'ordre chronologique.
+ * Tables : intervention (écriture), technicien, vehicule, utilisateur, anomalie
+ *          (lecture), notifications (écriture), journalactivites (via garage_log()).
+ * Liés : includes/anomaly_types.php (motif, libellés de gravité).
  */
 
 requireRole('garage');
@@ -127,7 +136,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'refuse'
 // Liste des demandes du garage
 // ============================================================
 $statutFilter = $_GET['statut'] ?? 'nouvelle';
-$where = "i.idGarage = ?";
+// Les interventions où le garage est en appui d'un technicien SmartAutoTrack
+// (INTERNE, affecté par l'admin) ne sont pas des demandes adressées au
+// garage : elles restent dans interventions.php, jamais ici.
+$where = "i.idGarage = ? AND NOT EXISTS (SELECT 1 FROM technicien ti WHERE ti.idTechnicien = i.idTechnicien AND ti.typeTechnicien = 'INTERNE')";
 $params = [$garageId];
 if ($statutFilter === 'nouvelle') {
     $where .= " AND i.idTechnicien IS NULL AND i.statut = 'PLANIFIEE'";
@@ -142,15 +154,24 @@ if ($statutFilter === 'nouvelle') {
 }
 // 'toutes' : pas de filtre supplémentaire
 
+// Anomalie déclarée à la demande = la première rattachée à l'intervention
+// (les constats des professionnels n'arrivent qu'une fois l'intervention
+// démarrée). Tri : nouvelles demandes avec une anomalie CRITIQUE d'abord,
+// puis ordre chronologique comme avant.
 $stmt = $conn->prepare("
     SELECT i.idIntervention AS id, i.type, i.description, i.dateIntervention, i.statut, i.priorite, i.idTechnicien,
            v.marque, v.modele, v.immatriculation,
-           u.nom AS client_nom, u.prenom AS client_prenom
+           u.nom AS client_nom, u.prenom AS client_prenom,
+           (SELECT a.type FROM anomalie a WHERE a.idIntervention = i.idIntervention ORDER BY a.idAnomalie ASC LIMIT 1) AS anomalie_type,
+           (SELECT a.niveau FROM anomalie a WHERE a.idIntervention = i.idIntervention ORDER BY a.idAnomalie ASC LIMIT 1) AS anomalie_niveau
     FROM intervention i
     JOIN vehicule v ON i.idVehicule = v.idVehicule
     JOIN utilisateur u ON i.idClient = u.idUtilisateur
     WHERE $where
-    ORDER BY i.dateIntervention ASC
+    ORDER BY CASE WHEN i.idTechnicien IS NULL AND i.statut = 'PLANIFIEE'
+                   AND EXISTS (SELECT 1 FROM anomalie ac WHERE ac.idIntervention = i.idIntervention AND ac.niveau = 'CRITIQUE')
+              THEN 0 ELSE 1 END,
+             i.dateIntervention ASC
 ");
 $stmt->execute($params);
 $demandes = $stmt->fetchAll();
@@ -223,7 +244,13 @@ include '../includes/header.php';
                                         </div>
                                         <div style="font-size:11.5px; color:#8AA0A3; margin-top:2px;"><?php echo h($d['immatriculation']); ?></div>
                                     </td>
-                                    <td><?php echo h($d['type'] ?: '—'); ?></td>
+                                    <td>
+                                        <?php echo h($d['type'] ?: '—'); ?>
+                                        <?php if ($d['type'] === ANOMALY_REQUEST_MOTIF && $d['anomalie_niveau']): $anomalieBadge = $d['anomalie_niveau'] === 'CRITIQUE' ? 'bad' : ($d['anomalie_niveau'] === 'MOYEN' ? 'warn' : 'neutral'); ?>
+                                            <div style="font-size:11.5px; color:#8AA0A3; margin-top:2px;"><?php echo h($d['anomalie_type'] ?: 'Type non précisé'); ?></div>
+                                            <span class="gv2-badge <?php echo h($anomalieBadge); ?>" title="<?php echo h(anomaly_severity_label($d['anomalie_niveau'])); ?>" style="display:inline-block; margin-top:4px;"><?php echo h('Gravité : ' . ucfirst(strtolower($d['anomalie_niveau']))); ?></span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td><?php echo h(date('d/m/Y', strtotime($d['dateIntervention']))); ?></td>
                                     <td><span class="gv2-badge <?php echo h($d['priorite'] === 'HAUTE' ? 'bad' : ($d['priorite'] === 'BASSE' ? 'neutral' : 'warn')); ?>"><?php echo h(ucfirst(strtolower($d['priorite']))); ?></span></td>
                                     <td><span class="gv2-badge <?php echo h($info['badge']); ?>"><?php echo h($info['label']); ?></span></td>

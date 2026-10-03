@@ -12,6 +12,9 @@ require_once 'includes/helpers.php';
  *   - POST form=start : démarrer une intervention PLANIFIEE déjà affectée
  *     (passage à EN_COURS) et la journaliser.
  *   - GET statut, date, technicien, vehicule : filtres de la liste.
+ * La liste comprend aussi les interventions où le garage est en appui d'un
+ * technicien SmartAutoTrack (typeTechnicien INTERNE, affecté par l'admin) :
+ * elles sont signalées « Appui SmartAutoTrack » à côté du technicien.
  * Tables : intervention (écriture), vehicule, utilisateur, technicien (lecture),
  *          journalactivites (via garage_log()).
  * Liés : garage/vehicule.php (fiche véhicule), garage/reparations.php (clôture).
@@ -70,11 +73,12 @@ $stmt = $conn->prepare("
     SELECT i.idIntervention AS id, i.type, i.description, i.dateIntervention, i.statut, i.priorite, i.idTechnicien,
            v.idVehicule AS vehicule_id, v.marque, v.modele, v.immatriculation,
            uc.nom AS client_nom, uc.prenom AS client_prenom,
-           ut.nom AS technicien_nom, ut.prenom AS technicien_prenom
+           ut.nom AS technicien_nom, ut.prenom AS technicien_prenom, t.typeTechnicien AS technicien_type
     FROM intervention i
     JOIN vehicule v ON i.idVehicule = v.idVehicule
     JOIN utilisateur uc ON i.idClient = uc.idUtilisateur
     LEFT JOIN utilisateur ut ON i.idTechnicien = ut.idUtilisateur
+    LEFT JOIN technicien t ON t.idTechnicien = i.idTechnicien
     WHERE $whereSql
     ORDER BY i.dateIntervention DESC
 ");
@@ -161,7 +165,7 @@ include '../includes/header.php';
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
                             <div>
                                 <div class="gv2-row-title"><?php echo h($iv['type'] ?: 'Intervention'); ?> — <?php echo h($iv['marque'] . ' ' . $iv['modele']); ?> (<?php echo h($iv['immatriculation']); ?>)</div>
-                                <div class="gv2-row-meta">Client : <?php echo h($iv['client_prenom'] . ' ' . $iv['client_nom']); ?> · <?php echo h(date('d/m/Y', strtotime($iv['dateIntervention']))); ?><?php echo h($iv['technicien_nom'] ? ' · Technicien : ' . $iv['technicien_prenom'] . ' ' . $iv['technicien_nom'] : ''); ?></div>
+                                <div class="gv2-row-meta">Client : <?php echo h($iv['client_prenom'] . ' ' . $iv['client_nom']); ?> · <?php echo h(date('d/m/Y', strtotime($iv['dateIntervention']))); ?><?php echo h($iv['technicien_nom'] ? ($iv['technicien_type'] === 'INTERNE' ? ' · Technicien SmartAutoTrack : ' : ' · Technicien : ') . $iv['technicien_prenom'] . ' ' . $iv['technicien_nom'] : ''); ?></div>
                             </div>
                             <span class="gv2-badge <?php echo h($info['badge']); ?>"><?php echo h($info['label']); ?></span>
                         </div>

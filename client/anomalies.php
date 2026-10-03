@@ -2,17 +2,26 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
+require_once 'includes/helpers.php';
 
 /**
  * Liste des anomalies des véhicules du client (espace client "v2").
  *
- * Accès : rôle client uniquement. Consultation seule : le client ne crée ni ne
- * modifie jamais d'anomalie, elles proviennent des constats technicien/garage.
+ * Accès : rôle client uniquement. Consultation seule sur cette page : le client
+ * ne modifie jamais une anomalie. Elles proviennent des constats technicien/garage
+ * ou de la déclaration du client lui-même dans sa demande d'intervention (motif
+ * « Anomalie constatée », cf. client/interventions.php), rattachée à cette
+ * intervention par anomalie.idIntervention.
  * GET : statut ('active' | 'resolue'), niveau ('FAIBLE' | 'MOYEN' | 'CRITIQUE'),
  *       vehicle (id d'un véhicule du client).
- * Tables lues : anomalie, vehicule, intervention, garage.
+ * Tables lues : anomalie, vehicule, intervention, garage, utilisateur, technicien.
  * Cloisonnement : toutes les requêtes filtrent sur v.idClient = client connecté.
- * Fichiers liés : client/includes/sidebar.php, includes/header.php.
+ * Intervention concernée : celle de anomalie.idIntervention ; à défaut (anciennes
+ * anomalies sans ce lien), la plus récente du véhicule avant la détection.
+ * Colonne « Prise en charge » : v2_intervention_handler() sur cette intervention
+ * (SmartAutoTrack et son technicien interne, garage partenaire en appui, ou garage).
+ * Fichiers liés : client/includes/sidebar.php, client/includes/helpers.php, includes/header.php,
+ * client/interventions.php (déclaration d'une anomalie à la demande).
  */
 requireRole('client');
 
@@ -35,9 +44,9 @@ $stmt = $conn->prepare("SELECT idVehicule AS id, marque, modele, immatriculation
 $stmt->execute([$_SESSION['user_id']]);
 $vehicules = $stmt->fetchAll();
 
-// Filtres (lecture seule — aucune action de création pour le client : les
-// anomalies viennent uniquement des constats technicien/garage lors d'une
-// intervention ou d'un diagnostic).
+// Filtres (lecture seule — aucune action sur cette page : les anomalies
+// viennent des constats technicien/garage ou de la demande d'intervention du
+// client, cf. client/interventions.php).
 $statutFilter = $_GET['statut'] ?? '';
 $niveauFilter = $_GET['niveau'] ?? '';
 $vehicleFilter = filter_var($_GET['vehicle'] ?? null, FILTER_VALIDATE_INT);
@@ -62,20 +71,32 @@ if ($vehicleFilter) {
 }
 $whereSql = implode(' AND ', $where);
 
-// Anomalies du parc/véhicule(s) du client, avec l'intervention la plus proche
-// (même véhicule, à ou avant la date de détection) comme provenance affichée —
-// et le garage associé à cette intervention, si connu.
+// Anomalies du parc/véhicule(s) du client, avec l'intervention concernée comme
+// provenance affichée — celle réellement rattachée (a.idIntervention), sinon
+// l'intervention la plus proche (même véhicule, à ou avant la date de
+// détection) pour les anciennes anomalies — puis, par jointure sur cette
+// intervention, son garage et son technicien (type INTERNE/GARAGE compris).
+// Le lien direct est indispensable pour une anomalie déclarée à la demande :
+// le garage fixe ensuite une date prévue postérieure à la détection.
 $stmt = $conn->prepare("
-    SELECT a.idAnomalie AS id, a.description, a.dateDetection, a.dateResolution, a.niveau, a.statut,
-           v.marque, v.modele, v.immatriculation,
-           (SELECT i.idIntervention FROM intervention i WHERE i.idVehicule = a.idVehicule AND i.dateIntervention <= a.dateDetection ORDER BY i.dateIntervention DESC LIMIT 1) AS intervention_id,
-           (SELECT i.type FROM intervention i WHERE i.idVehicule = a.idVehicule AND i.dateIntervention <= a.dateDetection ORDER BY i.dateIntervention DESC LIMIT 1) AS intervention_type,
-           (SELECT i.dateIntervention FROM intervention i WHERE i.idVehicule = a.idVehicule AND i.dateIntervention <= a.dateDetection ORDER BY i.dateIntervention DESC LIMIT 1) AS intervention_date,
-           (SELECT g.nomGarage FROM intervention i LEFT JOIN garage g ON g.idGarage = i.idGarage WHERE i.idVehicule = a.idVehicule AND i.dateIntervention <= a.dateDetection ORDER BY i.dateIntervention DESC LIMIT 1) AS nomGarage
-    FROM anomalie a
-    JOIN vehicule v ON a.idVehicule = v.idVehicule
-    WHERE $whereSql
-    ORDER BY a.dateDetection DESC
+    SELECT x.*, g.nomGarage, ut.prenom AS technicien_prenom, ut.nom AS technicien_nom,
+           t.typeTechnicien AS technicien_type
+    FROM (
+        SELECT a.idAnomalie AS id, a.description, a.dateDetection, a.dateResolution, a.niveau, a.statut,
+               v.marque, v.modele, v.immatriculation,
+               COALESCE(ia.idIntervention, (SELECT i.idIntervention FROM intervention i WHERE i.idVehicule = a.idVehicule AND i.dateIntervention <= a.dateDetection ORDER BY i.dateIntervention DESC LIMIT 1)) AS intervention_id,
+               COALESCE(ia.type, (SELECT i.type FROM intervention i WHERE i.idVehicule = a.idVehicule AND i.dateIntervention <= a.dateDetection ORDER BY i.dateIntervention DESC LIMIT 1)) AS intervention_type,
+               COALESCE(ia.dateIntervention, (SELECT i.dateIntervention FROM intervention i WHERE i.idVehicule = a.idVehicule AND i.dateIntervention <= a.dateDetection ORDER BY i.dateIntervention DESC LIMIT 1)) AS intervention_date
+        FROM anomalie a
+        JOIN vehicule v ON a.idVehicule = v.idVehicule
+        LEFT JOIN intervention ia ON ia.idIntervention = a.idIntervention AND ia.idVehicule = a.idVehicule
+        WHERE $whereSql
+    ) x
+    LEFT JOIN intervention ix ON ix.idIntervention = x.intervention_id
+    LEFT JOIN garage g ON g.idGarage = ix.idGarage
+    LEFT JOIN utilisateur ut ON ut.idUtilisateur = ix.idTechnicien
+    LEFT JOIN technicien t ON t.idTechnicien = ix.idTechnicien
+    ORDER BY x.dateDetection DESC
 ");
 $stmt->execute($params);
 $anomalies = $stmt->fetchAll();
@@ -116,7 +137,7 @@ include '../includes/header.php';
                 <?php endif; ?>
                 <div class="v2-kicker"><?php echo h($clientRoleLabel); ?></div>
                 <h1 class="v2-h1">Anomalies</h1>
-                <p class="v2-sub">Constatées par un technicien ou un garage lors d'une intervention ou d'un diagnostic — <?php echo $isEntreprise ? 'sur les véhicules de votre parc' : 'sur vos véhicules'; ?>.</p>
+                <p class="v2-sub">Constatées par un technicien ou un garage, ou signalées par vous dans une demande d'intervention — <?php echo $isEntreprise ? 'sur les véhicules de votre parc' : 'sur vos véhicules'; ?>.</p>
             </div>
         </div>
 
@@ -189,7 +210,7 @@ include '../includes/header.php';
                                 <th>Niveau</th>
                                 <th>Date</th>
                                 <th>Intervention concernée</th>
-                                <th>Garage</th>
+                                <th>Prise en charge</th>
                                 <th>Statut</th>
                             </tr>
                         </thead>
@@ -213,7 +234,7 @@ include '../includes/header.php';
                                     <td><span class="v2-badge <?php echo h($niveauBadge); ?>"><?php echo h(ucfirst(strtolower($a['niveau']))); ?></span></td>
                                     <td><?php echo h(date('d/m/Y', strtotime($a['dateDetection']))); ?></td>
                                     <td><?php echo h($a['intervention_type'] ? $a['intervention_type'] . ' du ' . date('d/m/Y', strtotime($a['intervention_date'])) : '—'); ?></td>
-                                    <td><?php echo h($a['nomGarage'] ?: '—'); ?></td>
+                                    <td><?php echo h($a['intervention_id'] ? v2_intervention_handler($a) : '—'); ?></td>
                                     <td><span class="v2-badge <?php echo $isActive ? 'bad' : 'ok'; ?>"><?php echo h($statutLabels[$a['statut']] ?? ucfirst(strtolower($a['statut']))); ?></span></td>
                                 </tr>
                             <?php endforeach; ?>
@@ -223,7 +244,7 @@ include '../includes/header.php';
             <?php endif; ?>
         </div>
 
-        <p class="v2-note" style="margin-top:14px;">Les anomalies sont constatées et enregistrées par un technicien ou un garage à la suite d'une intervention ou d'un diagnostic — vous ne pouvez pas en créer directement.</p>
+        <p class="v2-note" style="margin-top:14px;">Les anomalies sont constatées par un technicien ou un garage à la suite d'une intervention ou d'un diagnostic. Pour en signaler une vous-même, demandez une intervention avec le motif « Anomalie constatée » depuis la page <a href="interventions.php">Interventions</a>.</p>
     </main>
 </div>
 

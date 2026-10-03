@@ -10,11 +10,19 @@ require_once 'includes/helpers.php';
  * Accès : rôle admin uniquement.
  * GET `id` : identifiant de l'intervention ; si absent ou inconnu,
  * redirection vers interventions.php.
- * Action POST `action=reassign_garage` (jeton CSRF requis) : réaffecte la
- * demande à un autre garage validé via admin_reassign_garage().
+ * Actions POST (jeton CSRF requis), passées par `action` :
+ *   - reassign_garage : réaffecte la demande à un autre garage validé via
+ *     admin_reassign_garage() ;
+ *   - assign_internal : affecte une demande « à affecter » (sans technicien,
+ *     sans garage ou refusée) à un technicien SmartAutoTrack INTERNE validé,
+ *     garage partenaire en appui facultatif, via admin_assign_internal().
+ * Affiche le technicien (SmartAutoTrack ou de garage), le garage (partenaire
+ * en appui quand le technicien est interne) et les anomalies ouvertes liées
+ * à l'intervention avec leur gravité (CRITIQUE en rouge).
  *
  * Tables lues : intervention, vehicule, utilisateur (client, technicien),
- * garage, journal d'activité (historique complet de l'intervention).
+ * technicien, garage, anomalie, journal d'activité (historique complet de
+ * l'intervention).
  * Liens : admin/includes/helpers.php, interventions.php.
  */
 requireRole('admin');
@@ -50,23 +58,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'reass
     }
 }
 
+// Affectation à un technicien SmartAutoTrack — même règle que la liste
+// (admin_assign_internal, admin/includes/helpers.php), erreur réaffichée ici.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assign_internal') {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $errors[] = 'Session expirée, merci de réessayer.';
+    } else {
+        $technicienId = filter_var($_POST['technicien_id'] ?? null, FILTER_VALIDATE_INT);
+        // Garage en appui facultatif : valeur vide = aucun garage.
+        $supportGarageRaw = (string)($_POST['support_garage_id'] ?? '');
+        $supportGarageId = $supportGarageRaw === '' ? null : filter_var($supportGarageRaw, FILTER_VALIDATE_INT);
+        if (!$technicienId) {
+            $errors[] = 'Merci de choisir un technicien SmartAutoTrack.';
+        } elseif ($supportGarageId === false) {
+            $errors[] = 'Garage invalide.';
+        } else {
+            $assignError = admin_assign_internal($conn, $interventionId, $technicienId, $supportGarageId);
+            if ($assignError !== null) {
+                $errors[] = $assignError;
+            } else {
+                header("Location: intervention_detail.php?id=$interventionId&success=internal_assigned");
+                exit;
+            }
+        }
+    }
+}
+
 $stmt = $conn->prepare("
     SELECT i.idIntervention AS id, i.type, i.description, i.dateIntervention, i.statut, i.priorite,
            i.idGarage, i.idTechnicien,
            v.idVehicule, v.marque, v.modele, v.immatriculation,
            uc.idUtilisateur AS client_id, uc.nom AS client_nom, uc.prenom AS client_prenom, uc.email AS client_email,
            g.nomGarage, g.statutGarage,
-           ut.nom AS technicien_nom, ut.prenom AS technicien_prenom
+           ut.nom AS technicien_nom, ut.prenom AS technicien_prenom, t.typeTechnicien
     FROM intervention i
     JOIN vehicule v ON v.idVehicule = i.idVehicule
     JOIN utilisateur uc ON uc.idUtilisateur = i.idClient
     LEFT JOIN garage g ON g.idGarage = i.idGarage
     LEFT JOIN utilisateur ut ON ut.idUtilisateur = i.idTechnicien
+    LEFT JOIN technicien t ON t.idTechnicien = i.idTechnicien
     WHERE i.idIntervention = ?
 ");
 $stmt->execute([$interventionId]);
 $iv = $stmt->fetch();
 if (!$iv) { header('Location: interventions.php'); exit; }
+$isInternal = $iv['typeTechnicien'] === 'INTERNE';
+
+// Anomalies ouvertes (NOUVELLE ou EN_COURS) liées à l'intervention, la plus
+// grave d'abord.
+$stmt = $conn->prepare("
+    SELECT type, niveau, description FROM anomalie
+    WHERE idIntervention = ? AND statut IN ('NOUVELLE', 'EN_COURS')
+    ORDER BY FIELD(niveau, 'CRITIQUE', 'MOYEN', 'FAIBLE'), idAnomalie ASC
+");
+$stmt->execute([$interventionId]);
+$openAnomalies = $stmt->fetchAll();
 
 // Historique complet de cette intervention (toutes catégories) — c'est ici
 // qu'on retrouve, sans nouvelle colonne ni nouvelle table, le garage choisi
@@ -95,6 +141,22 @@ $otherGarages = $conn->prepare("SELECT idGarage, nomGarage FROM garage WHERE sta
 $otherGarages->execute([(int)($iv['idGarage'] ?? 0)]);
 $otherGarages = $otherGarages->fetchAll();
 
+// Demande « à affecter » (même définition que le compteur non_affectees de
+// interventions.php) : on propose aussi un technicien SmartAutoTrack, avec
+// tous les garages validés comme appui possible.
+$canAssignInternal = $iv['idTechnicien'] === null && $canReassign
+    && ($iv['idGarage'] === null || $iv['statut'] === 'ANNULEE');
+$techniciensInternes = [];
+$supportGarages = [];
+if ($canAssignInternal) {
+    $techniciensInternes = $conn->query("
+        SELECT u.idUtilisateur AS id, u.nom, u.prenom, t.specialite FROM utilisateur u
+        JOIN technicien t ON t.idTechnicien = u.idUtilisateur
+        WHERE t.typeTechnicien = 'INTERNE' AND t.statutValidation = 'VALIDE' ORDER BY u.nom
+    ")->fetchAll();
+    $supportGarages = $conn->query("SELECT idGarage, nomGarage FROM garage WHERE statutGarage = 'VALIDE' ORDER BY nomGarage")->fetchAll();
+}
+
 $statutLabels = ['PLANIFIEE' => 'Planifiée', 'EN_COURS' => 'En cours', 'TERMINEE' => 'Terminée', 'ANNULEE' => 'Annulée'];
 $statutBadge = ['PLANIFIEE' => 'info', 'EN_COURS' => 'warn', 'TERMINEE' => 'ok', 'ANNULEE' => 'bad'];
 
@@ -110,7 +172,7 @@ include '../includes/header.php';
 
     <main class="av2-main">
         <?php if (isset($_GET['success'])): ?>
-            <div class="av2-alert success">Garage affecté avec succès.</div>
+            <div class="av2-alert success"><?php echo h($_GET['success'] === 'internal_assigned' ? 'Technicien SmartAutoTrack affecté avec succès.' : 'Garage affecté avec succès.'); ?></div>
         <?php endif; ?>
         <?php foreach ($errors as $err): ?><div class="av2-alert error"><?php echo h($err); ?></div><?php endforeach; ?>
 
@@ -146,6 +208,18 @@ include '../includes/header.php';
                         <div><strong>Client</strong><br><?php echo h($iv['client_prenom'] . ' ' . $iv['client_nom']); ?> — <?php echo h($iv['client_email']); ?></div>
                         <div><strong>Véhicule</strong><br><?php echo h($iv['marque'] . ' ' . $iv['modele'] . ' (' . $iv['immatriculation'] . ')'); ?></div>
                         <?php if ($iv['description']): ?><div><strong>Description du client</strong><br><?php echo h($iv['description']); ?></div><?php endif; ?>
+                        <?php if (!empty($openAnomalies)): ?>
+                            <div>
+                                <strong>Anomalie(s) ouverte(s)</strong>
+                                <?php foreach ($openAnomalies as $a): ?>
+                                    <div style="margin-top:4px;">
+                                        <?php echo h($a['type'] ?: 'Type non précisé'); ?>
+                                        <span class="av2-badge <?php echo h(admin_anomaly_badge($a['niveau'])); ?>"><?php echo h('Gravité : ' . ucfirst(strtolower($a['niveau']))); ?></span>
+                                        <?php if ($a['description']): ?><div class="av2-row-meta"><?php echo h($a['description']); ?></div><?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -172,14 +246,16 @@ include '../includes/header.php';
 
             <div class="av2-col">
                 <div class="av2-card av2-panel-sm">
-                    <div class="av2-panel-head"><h2>Garage</h2></div>
+                    <div class="av2-panel-head"><h2>Affectation</h2></div>
                     <div style="display:flex; flex-direction:column; gap:10px; font-size:13.5px; margin-bottom:16px;">
                         <div>
-                            <strong>Actuellement affecté</strong><br>
+                            <strong><?php echo h($isInternal ? 'Garage' : 'Garage actuellement affecté'); ?></strong><br>
                             <?php if ($iv['nomGarage']): ?>
                                 <?php echo h($iv['nomGarage']); ?> <span class="av2-badge <?php echo h(av2_status_badge($iv['statutGarage'])); ?>"><?php echo h(av2_status_label($iv['statutGarage'])); ?></span>
+                            <?php elseif ($iv['idTechnicien'] === null): ?>
+                                <span class="av2-badge warn">Aucun — demande à SmartAutoTrack, à affecter</span>
                             <?php else: ?>
-                                <span class="av2-badge warn">Aucun</span>
+                                <span class="av2-badge info">Aucun garage — <?php echo h($iv['technicien_prenom'] . ' ' . $iv['technicien_nom']); ?></span>
                             <?php endif; ?>
                         </div>
                         <div>
@@ -199,9 +275,42 @@ include '../includes/header.php';
                             <?php endif; ?>
                         </div>
                         <?php if ($iv['technicien_nom']): ?>
-                            <div><strong>Technicien affecté</strong><br><?php echo h($iv['technicien_prenom'] . ' ' . $iv['technicien_nom']); ?></div>
+                            <div>
+                                <strong>Technicien affecté</strong><br><?php echo h($iv['technicien_prenom'] . ' ' . $iv['technicien_nom']); ?>
+                                <span class="av2-badge <?php echo h($isInternal ? 'info' : 'neutral'); ?>"><?php echo h($isInternal ? 'Technicien interne' : 'Technicien du garage'); ?></span>
+                            </div>
                         <?php endif; ?>
                     </div>
+
+                    <?php if ($canAssignInternal): ?>
+                        <?php if (empty($techniciensInternes)): ?>
+                            <div class="av2-empty">Aucun technicien SmartAutoTrack validé disponible.</div>
+                        <?php else: ?>
+                            <form method="POST" action="intervention_detail.php?id=<?php echo (int)$iv['id']; ?>" style="margin-bottom:16px;">
+                                <input type="hidden" name="action" value="assign_internal">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+                                <div class="av2-form-group">
+                                    <label>Technicien SmartAutoTrack</label>
+                                    <select name="technicien_id" required>
+                                        <option value="">Sélectionner un technicien interne</option>
+                                        <?php foreach ($techniciensInternes as $t): ?>
+                                            <option value="<?php echo (int)$t['id']; ?>"><?php echo h($t['prenom'] . ' ' . $t['nom'] . ($t['specialite'] ? ' — ' . $t['specialite'] : '')); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="av2-form-group">
+                                    <label>Garage (facultatif)</label>
+                                    <select name="support_garage_id">
+                                        <option value="">Aucun garage</option>
+                                        <?php foreach ($supportGarages as $g): ?>
+                                            <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <button type="submit" class="av2-btn-primary btn-confirm" data-confirm="<?php echo h('Affecter cette demande à ce technicien SmartAutoTrack ? Le technicien, le client et le garage éventuel seront notifiés.'); ?>" style="width:100%;">Affecter à un technicien interne</button>
+                            </form>
+                        <?php endif; ?>
+                    <?php endif; ?>
 
                     <?php if ($canReassign): ?>
                         <?php if (empty($otherGarages)): ?>
@@ -210,8 +319,10 @@ include '../includes/header.php';
                             <?php
                             $reassignFieldLabel = $iv['idGarage'] ? 'Réaffecter à' : 'Affecter à';
                             $reassignButtonLabel = $iv['idGarage'] ? 'Réaffecter le garage' : 'Affecter le garage';
-                            $reassignConfirm = $iv['idGarage']
-                                ? 'Réaffecter cette intervention à un autre garage ? Un technicien déjà affecté sera réinitialisé, le client et le nouveau garage seront notifiés.'
+                            // Un technicien déjà affecté (y compris SmartAutoTrack) est retiré
+                            // par admin_reassign_garage() : on le dit avant de confirmer.
+                            $reassignConfirm = ($iv['idGarage'] || $iv['idTechnicien'] !== null)
+                                ? 'Réaffecter cette intervention à un garage ? Le technicien déjà affecté sera retiré, le client et le nouveau garage seront notifiés.'
                                 : 'Affecter cette intervention à ce garage ? Le client et le garage seront notifiés.';
                             ?>
                             <form method="POST" action="intervention_detail.php?id=<?php echo (int)$iv['id']; ?>">

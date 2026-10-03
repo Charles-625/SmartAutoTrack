@@ -4,7 +4,12 @@
  * créé le 23/09/2026) avec les colonnes dont le site PHP a besoin, et crée
  * les 3 tables sans équivalent dans ce schéma (messages, notifications,
  * technician_documents), rattachées à lui par clé étrangère. Prépare aussi
- * la table `paiement` pour le paiement Mobile Money CamPay.
+ * la table `paiement` pour le paiement Mobile Money CamPay, puis les
+ * abonnements Premium (includes/subscription.php) : tables `abonnement` et
+ * `ia_usage`, paiement.idIntervention rendu facultatif (clé étrangère
+ * conservée) et colonne paiement.idAbonnement. Enfin, le rapport de fin
+ * d'intervention (includes/repair_report.php) : colonnes
+ * reparation.kilometrage et reparation.etatVehicule.
  *
  * Idempotent : peut être relancé sans effet si tout est déjà en place.
  * Ne touche à aucune donnée.
@@ -281,6 +286,103 @@ if (tableExists($conn, 'paiement')) {
     }
 }
 if ($n === $before) echo "  ok, la table paiement est prête\n";
+
+// ============================================================
+// 4) Abonnements Premium
+// ============================================================
+// Après la section 3 : paiement a déjà ses colonnes CamPay. Un paiement
+// d'abonnement n'a pas d'intervention (idIntervention NULL) et pointe vers
+// sa ligne `abonnement` (idAbonnement).
+echo "\n4. Abonnements\n";
+$before = $n;
+
+/**
+ * Indique si une contrainte de clé étrangère existe sur une table.
+ *
+ * @param PDO    $c    Connexion à la base.
+ * @param string $t    Table.
+ * @param string $name Nom de la contrainte.
+ * @return bool
+ */
+function foreignKeyExists(PDO $c, string $t, string $name): bool {
+    $s = $c->prepare("SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND CONSTRAINT_NAME=? AND CONSTRAINT_TYPE='FOREIGN KEY'");
+    $s->execute([$t, $name]);
+    return (bool)$s->fetchColumn();
+}
+
+if (!tableExists($conn, 'abonnement')) {
+    announce($apply, 'créer la table abonnement');
+    if ($apply) $conn->exec("CREATE TABLE abonnement (
+        idAbonnement INT AUTO_INCREMENT PRIMARY KEY,
+        idClient INT NOT NULL,
+        formule ENUM('PREMIUM') NOT NULL DEFAULT 'PREMIUM',
+        periodicite ENUM('ESSAI','OFFERT','MENSUEL','ANNUEL') NOT NULL,
+        nbVehicules INT NULL,
+        montant DECIMAL(10,2) NOT NULL DEFAULT 0,
+        statut ENUM('EN_ATTENTE','ACTIF','ECHOUE','ANNULE') NOT NULL DEFAULT 'EN_ATTENTE',
+        dateCreation DATETIME NOT NULL,
+        dateDebut DATETIME NULL,
+        dateFin DATETIME NULL,
+        idAdministrateur INT NULL,
+        INDEX idx_abonnement_client_statut_fin (idClient, statut, dateFin),
+        CONSTRAINT fk_abonnement_client FOREIGN KEY (idClient) REFERENCES client(idClient) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+}
+if (!tableExists($conn, 'ia_usage')) {
+    announce($apply, 'créer la table ia_usage');
+    if ($apply) $conn->exec("CREATE TABLE ia_usage (
+        idUtilisateur INT NOT NULL,
+        jour DATE NOT NULL,
+        nb INT NOT NULL DEFAULT 0,
+        PRIMARY KEY (idUtilisateur, jour),
+        CONSTRAINT fk_ia_usage_utilisateur FOREIGN KEY (idUtilisateur) REFERENCES utilisateur(idUtilisateur) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+}
+
+if (tableExists($conn, 'paiement')) {
+    // MODIFY ne change que la nullabilité : fk_paiement_intervention est
+    // conservée (une valeur NULL n'est simplement pas contrôlée).
+    $intervention = columnInfo($conn, 'paiement', 'idIntervention');
+    if ($intervention && $intervention['IS_NULLABLE'] === 'NO') {
+        announce($apply, 'rendre paiement.idIntervention facultatif (NULL pour un abonnement)');
+        if ($apply) $conn->exec("ALTER TABLE paiement MODIFY idIntervention INT NULL");
+    }
+    if (!colExists($conn, 'paiement', 'idAbonnement')) {
+        announce($apply, 'ajouter paiement.idAbonnement');
+        if ($apply) $conn->exec("ALTER TABLE paiement ADD COLUMN idAbonnement INT NULL");
+    }
+    if (!indexExists($conn, 'paiement', 'idx_paiement_abonnement')) {
+        announce($apply, "créer l'index idx_paiement_abonnement");
+        if ($apply) $conn->exec("ALTER TABLE paiement ADD INDEX idx_paiement_abonnement (idAbonnement)");
+    }
+    if (!foreignKeyExists($conn, 'paiement', 'fk_paiement_abonnement')) {
+        announce($apply, 'créer la clé étrangère fk_paiement_abonnement (paiement.idAbonnement -> abonnement)');
+        if ($apply) $conn->exec("ALTER TABLE paiement ADD CONSTRAINT fk_paiement_abonnement FOREIGN KEY (idAbonnement) REFERENCES abonnement(idAbonnement) ON DELETE SET NULL");
+    }
+}
+if ($n === $before) echo "  ok, les abonnements sont prêts\n";
+
+// ============================================================
+// 5) Rapport de fin d'intervention
+// ============================================================
+// Kilométrage relevé et état du véhicule à la sortie, saisis à la clôture
+// d'une réparation (includes/repair_report.php). Facultatives (NULL) : les
+// réparations enregistrées avant cette section n'ont pas ces valeurs. Tant
+// qu'elles manquent, repairReportReady() renvoie false et le site enregistre
+// la réparation sans elles.
+echo "\n5. Rapport de fin d'intervention\n";
+$before = $n;
+$reparationColumns = [
+    ['kilometrage', 'INT NULL'],
+    ['etatVehicule', 'VARCHAR(20) NULL'],
+];
+foreach ($reparationColumns as [$c, $def]) {
+    if (!colExists($conn, 'reparation', $c)) {
+        announce($apply, "ajouter reparation.$c");
+        if ($apply) $conn->exec("ALTER TABLE reparation ADD COLUMN `$c` $def");
+    }
+}
+if ($n === $before) echo "  ok, le rapport de fin d'intervention est prêt\n";
 
 echo "\n" . ($n === 0 ? "Rien à faire, tout est déjà en place." :
     ($apply ? "$n action(s) appliquée(s)." : "$n action(s) à appliquer. Relancez avec --apply.")) . "\n";

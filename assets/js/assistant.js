@@ -5,6 +5,8 @@
  * Chargé uniquement par admin/assistant.php et client/assistant.php
  * (conteneur #aiChat) ; ne fait rien ailleurs. Dépend de jQuery ($.ajax,
  * qui ajoute le jeton CSRF via main.js) et de la constante globale SITE_URL.
+ * Si la page affiche le compteur #aiRemaining (client gratuit), il est mis à
+ * jour avec le champ « remaining » de chaque réponse du serveur.
  */
 (function () {
     const root = document.getElementById('aiChat');
@@ -58,6 +60,17 @@
         return div;
     }
 
+    /**
+     * Met à jour le compteur de messages gratuits restants, s'il est affiché.
+     * @param {?Object} response Réponse JSON du serveur (champ remaining).
+     */
+    function updateRemaining(response) {
+        const counter = document.getElementById('aiRemaining');
+        if (counter && response && typeof response.remaining === 'number') {
+            counter.textContent = response.remaining;
+        }
+    }
+
     (window.AI_HISTORY || []).forEach(m => addMessage(m.role === 'user' ? 'user' : 'assistant', m.content));
 
     /**
@@ -82,10 +95,12 @@
             success: function (response) {
                 pending.className = 'ai-msg ai-msg-assistant';
                 setText(pending, response.answer, true);
+                updateRemaining(response);
             },
             error: function (xhr) {
                 pending.className = 'ai-msg ai-msg-error';
                 setText(pending, (xhr.responseJSON && xhr.responseJSON.message) || 'Erreur de l\u2019assistant IA.', false);
+                updateRemaining(xhr.responseJSON);
             },
             complete: function () {
                 root.classList.remove('is-busy');

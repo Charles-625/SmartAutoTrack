@@ -3,6 +3,11 @@
  * Helpers du dashboard "v2" Administrateur. Réutilise les helpers génériques
  * déjà écrits pour le client (v2_relative, v2_today_fr — purs utilitaires
  * d'affichage, aucun couplage au rôle) plutôt que de les dupliquer.
+ *
+ * Contient aussi la logique d'affectation des demandes, partagée entre
+ * admin/interventions.php et admin/intervention_detail.php :
+ * admin_reassign_garage() (vers un garage) et admin_assign_internal() (vers
+ * un technicien SmartAutoTrack, garage partenaire en appui facultatif).
  */
 require_once __DIR__ . '/../../client/includes/helpers.php';
 
@@ -29,7 +34,9 @@ if (!function_exists('admin_reassign_garage')) {
      * Autorisé seulement si l'intervention est PLANIFIEE ou ANNULEE (refusée) —
      * jamais EN_COURS/TERMINEE (travail réel déjà engagé ou fini). Si un
      * technicien était déjà affecté (par l'ancien garage), il est remis à
-     * NULL : il n'appartient pas forcément au nouveau garage.
+     * NULL : il n'appartient pas forcément au nouveau garage, et il est
+     * notifié du retrait. L'UPDATE reprend la condition de statut (rowCount
+     * vérifié) : une intervention démarrée entre-temps n'est pas réaffectée.
      *
      * @param PDO $conn           Connexion à la base.
      * @param int $interventionId Intervention à (ré)affecter.
@@ -66,8 +73,14 @@ if (!function_exists('admin_reassign_garage')) {
 
         // Retour à PLANIFIEE : une demande ANNULEE (refusée) redevient visible pour
         // le nouveau garage.
-        $conn->prepare("UPDATE intervention SET idGarage = ?, idTechnicien = NULL, statut = 'PLANIFIEE' WHERE idIntervention = ?")
-            ->execute([$newGarageId, $interventionId]);
+        // L'UPDATE reprend la condition de statut : une intervention démarrée
+        // entre la lecture et l'écriture (garage ou technicien) n'est jamais
+        // ramenée à PLANIFIEE ni retirée à son technicien.
+        $stmt = $conn->prepare("UPDATE intervention SET idGarage = ?, idTechnicien = NULL, statut = 'PLANIFIEE' WHERE idIntervention = ? AND statut IN ('PLANIFIEE', 'ANNULEE')");
+        $stmt->execute([$newGarageId, $interventionId]);
+        if ($stmt->rowCount() !== 1) {
+            return 'Cette demande vient d\'être modifiée, merci de recharger la page.';
+        }
 
         if ($isReassignment) {
             $logTitle = 'Intervention réaffectée par l\'administrateur';
@@ -101,7 +114,156 @@ if (!function_exists('admin_reassign_garage')) {
                 ->execute([$garage['idUtilisateur'], $garageMsg]);
         }
 
+        // Le technicien retiré (ex. technicien SmartAutoTrack affecté par
+        // l'admin) est prévenu : la tâche disparaît de son espace.
+        if ($hadTechnicien) {
+            $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'intervention', 'Intervention retirée', ?)")
+                ->execute([$iv['idTechnicien'], 'L\'intervention (' . $iv['type'] . ') qui vous était affectée a été confiée par l\'administrateur au garage ' . $garage['nomGarage'] . '.']);
+        }
+
         return null;
+    }
+}
+
+if (!function_exists('admin_assign_internal')) {
+    /**
+     * Affecte une demande à un technicien SmartAutoTrack (technicien INTERNE),
+     * avec, facultativement, un garage partenaire en appui (lieu de la
+     * réparation). Logique métier partagée entre admin/interventions.php et
+     * admin/intervention_detail.php, comme admin_reassign_garage() : chaque
+     * appelant gère le CSRF et son formulaire.
+     *
+     * Demandes acceptées : sans technicien, PLANIFIEE ou ANNULEE, et sans
+     * garage ou refusées par un garage — c.-à-d. les demandes « à affecter »
+     * (même définition que le compteur non_affectees). Une demande encore
+     * en attente chez un garage n'est pas prise : c'est à lui d'y répondre.
+     * Une demande ANNULEE (refusée) repasse à PLANIFIEE ; le garage qui l'a
+     * refusée est remplacé par le garage en appui choisi, ou retiré.
+     *
+     * Le technicien est vérifié en base (typeTechnicien = 'INTERNE',
+     * statutValidation = 'VALIDE'), le garage en appui aussi (statutGarage =
+     * 'VALIDE'). L'intervention est verrouillée (SELECT … FOR UPDATE) et
+     * l'UPDATE reprend les conditions : deux administrateurs qui affectent la
+     * même demande en même temps ne peuvent pas l'affecter deux fois.
+     *
+     * Notifie le technicien (préfixe « URGENT » si une anomalie CRITIQUE
+     * ouverte est liée à l'intervention), le garage en appui s'il a un compte,
+     * et le client ; journalise l'affectation (catégorie 'intervention').
+     *
+     * @param PDO      $conn           Connexion à la base.
+     * @param int      $interventionId Intervention à affecter.
+     * @param int      $technicienId   Technicien INTERNE validé.
+     * @param int|null $garageId       Garage partenaire VALIDE en appui, ou null.
+     * @return string|null null si succès, sinon un message d'erreur à afficher.
+     */
+    function admin_assign_internal(PDO $conn, int $interventionId, int $technicienId, ?int $garageId = null): ?string {
+        $stmt = $conn->prepare("
+            SELECT u.prenom, u.nom FROM technicien t JOIN utilisateur u ON u.idUtilisateur = t.idTechnicien
+            WHERE t.idTechnicien = ? AND t.typeTechnicien = 'INTERNE' AND t.statutValidation = 'VALIDE'
+        ");
+        $stmt->execute([$technicienId]);
+        $technicien = $stmt->fetch();
+        if (!$technicien) {
+            return 'Technicien introuvable, non validé ou rattaché à un garage.';
+        }
+
+        $garage = null;
+        if ($garageId !== null) {
+            $stmt = $conn->prepare("SELECT idUtilisateur, nomGarage FROM garage WHERE idGarage = ? AND statutGarage = 'VALIDE'");
+            $stmt->execute([$garageId]);
+            $garage = $stmt->fetch();
+            if (!$garage) {
+                return 'Garage introuvable ou non validé.';
+            }
+        }
+
+        try {
+            $conn->beginTransaction();
+
+            $stmt = $conn->prepare("
+                SELECT i.idClient, i.type, i.statut, v.marque, v.modele, v.immatriculation
+                FROM intervention i JOIN vehicule v ON v.idVehicule = i.idVehicule
+                WHERE i.idIntervention = ?
+                  AND i.idTechnicien IS NULL AND i.statut IN ('PLANIFIEE', 'ANNULEE')
+                  AND (i.idGarage IS NULL OR i.statut = 'ANNULEE')
+                FOR UPDATE
+            ");
+            $stmt->execute([$interventionId]);
+            $iv = $stmt->fetch();
+            if (!$iv) {
+                $conn->rollBack();
+                return 'Cette demande n\'est plus à affecter (déjà affectée, en attente chez un garage, en cours ou terminée).';
+            }
+
+            // Mêmes conditions que la lecture : rowCount = 0 signifie que la
+            // demande a changé entre-temps.
+            $stmt = $conn->prepare("
+                UPDATE intervention SET idTechnicien = ?, idGarage = ?, statut = 'PLANIFIEE'
+                WHERE idIntervention = ? AND idTechnicien IS NULL AND statut IN ('PLANIFIEE', 'ANNULEE')
+                  AND (idGarage IS NULL OR statut = 'ANNULEE')
+            ");
+            $stmt->execute([$technicienId, $garageId, $interventionId]);
+            if ($stmt->rowCount() !== 1) {
+                $conn->rollBack();
+                return 'Cette demande vient d\'être modifiée, merci de recharger la page.';
+            }
+
+            // Anomalie CRITIQUE encore ouverte liée à la demande : le technicien
+            // la voit en tête de sa notification.
+            $stmt = $conn->prepare("SELECT 1 FROM anomalie WHERE idIntervention = ? AND niveau = 'CRITIQUE' AND statut IN ('NOUVELLE', 'EN_COURS') LIMIT 1");
+            $stmt->execute([$interventionId]);
+            $isCritical = (bool)$stmt->fetchColumn();
+
+            $technicienNom = $technicien['prenom'] . ' ' . $technicien['nom'];
+            $vehicule = $iv['marque'] . ' ' . $iv['modele'] . ' (' . $iv['immatriculation'] . ')';
+            $motif = $iv['type'] ?: 'Intervention';
+
+            // Garage en appui explicite ; sans appui, 'idGarage' => false : l'entrée
+            // ne va jamais dans le journal du garage qui avait refusé la demande.
+            log_activity($conn, 'Intervention affectée à un technicien SmartAutoTrack par l\'administrateur', [
+                'idUtilisateur' => $_SESSION['user_id'] ?? null,
+                'idIntervention' => $interventionId,
+                'idTechnicien' => $technicienId,
+                'idGarage' => $garageId ?? false,
+                'description' => $motif . ' — ' . $technicienNom . ($garage ? ' (garage : ' . $garage['nomGarage'] . ')' : ''),
+                'categorie' => 'intervention',
+            ]);
+
+            $notif = $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'intervention', ?, ?)");
+            $notif->execute([
+                $technicienId,
+                ($isCritical ? 'URGENT — ' : '') . 'Nouvelle intervention assignée',
+                ($isCritical ? 'URGENT (anomalie critique) — ' : '') . 'Vous avez été assigné à une intervention : ' . $motif . ' — ' . $vehicule
+                    . ($garage ? '. Garage : ' . $garage['nomGarage'] . '.' : '.'),
+            ]);
+            if ($garage && $garage['idUtilisateur']) {
+                $notif->execute([
+                    $garage['idUtilisateur'],
+                    'Nouvelle intervention SmartAutoTrack',
+                    'SmartAutoTrack vous a confié une intervention (' . $motif . ' — ' . $vehicule . '), avec son technicien ' . $technicienNom . '.',
+                ]);
+            }
+            $notif->execute([
+                $iv['idClient'],
+                'Technicien affecté à votre demande',
+                'Un technicien SmartAutoTrack a été affecté à votre demande (' . $motif . ') : ' . $technicienNom
+                    . ($garage ? ', avec le garage ' . $garage['nomGarage'] . '.' : '.'),
+            ]);
+
+            $conn->commit();
+        } catch (Exception $e) {
+            if ($conn->inTransaction()) $conn->rollBack();
+            return 'Erreur lors de l\'affectation au technicien.';
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('admin_anomaly_badge')) {
+    /** Classe de badge (.av2-badge.*) d'un niveau d'anomalie : CRITIQUE en rouge. */
+    function admin_anomaly_badge(?string $niveau): string {
+        return ['CRITIQUE' => 'bad', 'MOYEN' => 'warn', 'FAIBLE' => 'neutral'][$niveau ?? ''] ?? 'neutral';
     }
 }
 

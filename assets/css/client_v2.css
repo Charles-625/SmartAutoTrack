@@ -233,6 +233,9 @@ body.nav-open { overflow: hidden; }
 .v2-alert { padding: 12px 16px; border-radius: 12px; font-size: 13.5px; margin-bottom: 4px; }
 .v2-alert.success { background: var(--v2-success-bg); color: var(--v2-success); }
 .v2-alert.error { background: var(--v2-danger-bg); color: var(--v2-danger); }
+/* Bandeau d'information sur une limite de la formule gratuite (historique 12 mois…). */
+.v2-alert.premium { background: var(--v2-entreprise-bg); color: var(--v2-entreprise); margin-bottom: 14px; }
+.v2-alert.premium a { color: inherit; font-weight: 700; }
 
 /* ---------- Journal d'activité (timeline) ---------- */
 .v2-timeline { display: flex; flex-direction: column; }

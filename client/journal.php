@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
+require_once '../includes/subscription.php';
 
 /**
  * Journal d'activité du client.
@@ -12,7 +13,18 @@ require_once 'includes/helpers.php';
  * Lecture seule. Les événements viennent de activity_log_fetch()
  * (includes/activity_log.php), qui limite le résultat aux véhicules,
  * interventions, réparations et anomalies du client.
- * Tables lues : journal d'activité (via activity_log_fetch), intervention (badge).
+ * Formule gratuite : seuls les SUB_FREE_HISTORY_MONTHS derniers mois sont
+ * affichés (subscriptionHistorySince()), sauf les événements d'une
+ * intervention encore en cours ou d'une anomalie encore active, toujours
+ * visibles ; les données plus anciennes restent en base.
+ * Le rapport de fin d'intervention rempli par le technicien ou le garage
+ * (description multi-lignes, activity_log_is_report()) s'affiche replié sous
+ * « Voir le rapport » ; les descriptions des autres événements restent
+ * masquées, comme avant.
+ * Un événement d'intervention sans garage (demande adressée à SmartAutoTrack,
+ * technicien SmartAutoTrack sans garage en appui) est signé « SmartAutoTrack ».
+ * Tables lues : journal d'activité (via activity_log_fetch), intervention
+ * (badge, interventions actives), anomalie (anomalies actives), abonnement.
  */
 requireRole('client');
 
@@ -38,6 +50,29 @@ $journal = activity_log_fetch($conn, 'client', (int)$_SESSION['user_id'], [], [
     'date_from' => $dateFrom ?: null,
     'date_to' => $dateTo ?: null,
 ]);
+
+// Historique limité de la formule gratuite (null : aucun filtre). Le filtre se
+// fait ici plutôt que dans activity_log_fetch() pour garder visibles, quelle
+// que soit leur date, les événements des dossiers encore ouverts.
+$historySince = subscriptionHistorySince($conn, (int)$_SESSION['user_id']);
+if ($historySince !== null && $journal) {
+    $stmt = $conn->prepare("SELECT idIntervention FROM intervention WHERE idClient = ? AND statut IN ('PLANIFIEE', 'EN_COURS')");
+    $stmt->execute([$_SESSION['user_id']]);
+    $openInterventions = array_flip(array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN)));
+    $stmt = $conn->prepare("
+        SELECT a.idAnomalie FROM anomalie a
+        JOIN vehicule v ON v.idVehicule = a.idVehicule
+        WHERE v.idClient = ? AND a.statut IN ('NOUVELLE', 'EN_COURS')
+    ");
+    $stmt->execute([$_SESSION['user_id']]);
+    $openAnomalies = array_flip(array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN)));
+
+    $journal = array_values(array_filter($journal, function ($j) use ($historySince, $openInterventions, $openAnomalies) {
+        return $j['dateHeure'] >= $historySince
+            || isset($openInterventions[(int)$j['idIntervention']])
+            || isset($openAnomalies[(int)$j['idAnomalie']]);
+    }));
+}
 
 // Badge de la sidebar : interventions actives (planifiées ou en cours) du client.
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idClient = ? AND statut IN ('PLANIFIEE', 'EN_COURS')");
@@ -70,6 +105,10 @@ include '../includes/header.php';
             </div>
         </div>
 
+        <?php if ($historySince !== null): ?>
+            <div class="v2-alert premium">Historique limité aux <?php echo (int)SUB_FREE_HISTORY_MONTHS; ?> derniers mois — <a href="abonnement.php">Premium : historique complet</a></div>
+        <?php endif; ?>
+
         <form method="GET" class="v2-filterbar">
             <input type="date" name="date_from" value="<?php echo h($dateFrom); ?>" onchange="this.form.submit()">
             <input type="date" name="date_to" value="<?php echo h($dateTo); ?>" onchange="this.form.submit()">
@@ -94,9 +133,12 @@ include '../includes/header.php';
                                     <?php if ($j['idIntervention']): ?>
                                         <?php echo h($j['intervention_type'] ?: 'Intervention'); ?><?php echo h($j['marque'] ? ' · ' . $j['marque'] . ' ' . $j['modele'] . ' (' . $j['immatriculation'] . ')' : ''); ?>
                                     <?php endif; ?>
-                                    <?php if ($j['nomGarage']): ?> · <?php echo h($j['nomGarage']); ?><?php endif; ?>
+                                    <?php if ($j['nomGarage']): ?> · <?php echo h($j['nomGarage']); ?><?php elseif ($j['idIntervention']): ?> · SmartAutoTrack<?php endif; ?>
                                 </div>
                                 <div class="v2-timeline-time"><?php echo h(v2_relative($j['dateHeure'], $dbNow)); ?> · <?php echo h(date('d/m/Y H:i', strtotime($j['dateHeure']))); ?></div>
+                                <?php if (activity_log_is_report($j)): ?>
+                                    <details style="margin-top:6px;"><summary style="cursor:pointer; font-size:12.5px; font-weight:700;">Voir le rapport</summary><div style="white-space:pre-line; font-size:13px; line-height:1.55; margin-top:6px; padding:10px 12px; border-radius:10px; background:#EEF0F7;"><?php echo h($j['description']); ?></div></details>
+                                <?php endif; ?>
                             </div>
                         </div>
                     <?php endforeach; ?>

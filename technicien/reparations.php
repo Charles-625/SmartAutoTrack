@@ -3,19 +3,29 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
+require_once '../includes/repair_report.php';
 
 /**
  * Espace technicien — Mes réparations.
  *
  * Accès : rôle « technicien ».
  * Actions :
- *   - POST form=new_reparation : enregistrer la réparation d'une de mes
- *     interventions EN_COURS. Dans une même transaction : création de la
- *     réparation (TERMINEE), clôture de l'intervention, résolution de ses
- *     anomalies ouvertes, journalisation et notification du client.
- *   - GET action=new&intervention_id=… : ouvre directement le formulaire.
- * Tables : reparation, intervention, anomalie, notifications (écriture),
- *          vehicule, utilisateur (lecture), journalactivites (via technicien_log()).
+ *   - POST form=new_reparation : enregistrer la réparation (rapport de fin
+ *     d'intervention) d'une de mes interventions EN_COURS, kilométrage relevé
+ *     et état du véhicule compris. Traitement commun avec le garage :
+ *     repairReportParse() puis repairReportClose() (includes/repair_report.php),
+ *     bornés ici à idTechnicien = moi. Dans une même transaction : réparation
+ *     (TERMINEE), clôture de l'intervention, kilométrage et état du véhicule,
+ *     résolution de ses anomalies ouvertes, rapport complet dans le journal et
+ *     notification du client.
+ *     Champ facultatif return=taches|interventions (liste blanche,
+ *     repairReportReturnKey()) : envoyé par la fenêtre « Marquer terminée »
+ *     de taches.php / interventions.php, on y revient après succès
+ *     (?success=repaired) ; sinon retour sur cette page (?success=created).
+ *   - GET action=new&intervention_id=…[&return=…] : ouvre directement le formulaire.
+ * Tables : reparation, intervention, vehicule, anomalie, notifications
+ *          (écriture, via repairReportClose()), utilisateur (lecture),
+ *          journalactivites (via log_activity()).
  */
 
 requireRole('technicien');
@@ -27,67 +37,45 @@ $selfId = (int)$_SESSION['user_id'];
 $formErrors = [];
 $action = $_GET['action'] ?? '';
 $preselectIntervention = filter_var($_GET['intervention_id'] ?? null, FILTER_VALIDATE_INT);
+$returnKey = repairReportReturnKey($_POST['return'] ?? $_GET['return'] ?? '');
+$old = [];
 
 // ============================================================
 // Enregistrer une réparation (clôture l'intervention en cours). Il ne s'agit
 // PAS d'un rapport rédigé librement : un formulaire structuré qui alimente
 // directement la fiche réparation vue par le garage et le client, et
-// journalise automatiquement l'action (jamais un document à télécharger).
+// journalise automatiquement le rapport complet (jamais un document à télécharger).
 // ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'new_reparation') {
+    // Valeurs réaffichées dans le formulaire en cas d'erreur.
+    $old = $_POST;
+    $preselectIntervention = filter_var($_POST['intervention_id'] ?? null, FILTER_VALIDATE_INT);
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $formErrors[] = 'Session expirée, merci de réessayer.';
     } else {
-        $interventionId = filter_var($_POST['intervention_id'] ?? null, FILTER_VALIDATE_INT);
-        $titre = sanitize($_POST['titre'] ?? '');
-        $description = sanitize($_POST['description'] ?? '');
-        $diagnostic = sanitize($_POST['diagnostic'] ?? '');
-        $travaux = sanitize($_POST['travaux_effectues'] ?? '');
-        $pieces = sanitize($_POST['pieces_utilisees'] ?? '');
-        $duree = (float)($_POST['duree_intervention'] ?? 0);
-        $cout = (float)($_POST['cout'] ?? 0);
-        $recommandations = sanitize($_POST['recommandations'] ?? '');
-
-        if (!$interventionId) $formErrors[] = 'Intervention requise.';
-        if (empty($titre)) $formErrors[] = 'Titre requis.';
-        if (empty($description)) $formErrors[] = 'Description requise.';
-        if (empty($diagnostic)) $formErrors[] = 'Diagnostic requis.';
-        if (empty($travaux)) $formErrors[] = 'Travaux effectués requis.';
-        if ($duree <= 0) $formErrors[] = 'Durée d\'intervention requise.';
-        if ($cout < 0) $formErrors[] = 'Coût invalide.';
+        $parsed = repairReportParse($_POST);
+        $formErrors = $parsed['errors'];
 
         if (empty($formErrors)) {
-            // Contrôle de propriété et d'état : une de MES interventions, encore EN_COURS.
-            $stmt = $conn->prepare("SELECT idClient FROM intervention WHERE idIntervention = ? AND idTechnicien = ? AND statut = 'EN_COURS'");
-            $stmt->execute([$interventionId, $selfId]);
-            $iv = $stmt->fetch();
-            if (!$iv) {
-                $formErrors[] = 'Cette intervention n\'est pas (ou plus) en cours pour vous.';
-            } else {
-                // Transaction : réparation, clôture de l'intervention et résolution des anomalies sont validées ensemble.
-                $conn->beginTransaction();
-                $stmt = $conn->prepare("
-                    INSERT INTO reparation (idIntervention, idTechnicien, titre, description, diagnostic, travauxEffectues, piecesUtilisees, dureeIntervention, cout, recommandations, statut)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'TERMINEE')
-                ");
-                $stmt->execute([$interventionId, $selfId, $titre, $description, $diagnostic, $travaux, $pieces, $duree, $cout, $recommandations]);
-                $reparationId = (int)$conn->lastInsertId();
-
-                $conn->prepare("UPDATE intervention SET statut = 'TERMINEE' WHERE idIntervention = ? AND idTechnicien = ?")->execute([$interventionId, $selfId]);
-
-                // La réparation règle les anomalies constatées sur cette intervention
-                $conn->prepare("UPDATE anomalie SET statut = 'TRAITEE', dateResolution = NOW() WHERE idIntervention = ? AND statut IN ('NOUVELLE', 'EN_COURS')")->execute([$interventionId]);
-
-                technicien_log($conn, 'Réparation renseignée et intervention clôturée', [
-                    'idIntervention' => $interventionId, 'idReparation' => $reparationId, 'description' => $titre, 'categorie' => 'reparation',
-                ]);
-
-                $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'rapport', 'Rapport de réparation disponible', ?)")
-                    ->execute([$iv['idClient'], 'Le rapport de réparation pour votre véhicule est disponible.']);
-
-                $conn->commit();
-                header('Location: reparations.php?success=created');
+            // Contrôle de propriété et d'état (dans la transaction) : une de MES interventions, encore EN_COURS.
+            // Erreur SQL au milieu : repairReportClose() a déjà annulé la
+            // transaction ; on l'affiche au lieu d'une page d'erreur.
+            try {
+                $result = repairReportClose($conn, ['idTechnicien' => $selfId], $parsed['data'], $selfId);
+            } catch (Exception $e) {
+                $result = ['ok' => false, 'error' => 'db_error', 'kmActuel' => null];
+            }
+            if ($result['ok']) {
+                $target = $returnKey !== '' ? $returnKey . '.php?success=repaired' : 'reparations.php?success=created';
+                header('Location: ' . $target);
                 exit;
+            }
+            if ($result['error'] === 'km_too_low') {
+                $formErrors[] = repairReportKmError((int)$parsed['data']['kilometrage'], (int)$result['kmActuel']);
+            } elseif ($result['error'] === 'db_error') {
+                $formErrors[] = 'Erreur lors de l\'enregistrement du rapport. Rien n\'a été modifié, merci de réessayer.';
+            } else {
+                $formErrors[] = 'Cette intervention n\'est pas (ou plus) en cours pour vous.';
             }
         }
     }
@@ -95,7 +83,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'new_rep
 
 // Interventions EN_COURS de ce technicien, disponibles pour enregistrer une réparation
 $stmt = $conn->prepare("
-    SELECT i.idIntervention AS id, i.type, v.marque, v.modele, v.immatriculation, u.nom AS client_nom, u.prenom AS client_prenom
+    SELECT i.idIntervention AS id, i.type, v.marque, v.modele, v.immatriculation, v.kilometrage,
+           u.nom AS client_nom, u.prenom AS client_prenom
     FROM intervention i
     JOIN vehicule v ON i.idVehicule = v.idVehicule
     JOIN utilisateur u ON i.idClient = u.idUtilisateur
@@ -104,6 +93,12 @@ $stmt = $conn->prepare("
 ");
 $stmt->execute([$selfId]);
 $interventionsDisponibles = $stmt->fetchAll();
+
+// Kilométrage actuel de l'intervention présélectionnée (aide du champ kilométrage).
+$kmPreselect = null;
+foreach ($interventionsDisponibles as $iv) {
+    if ($preselectIntervention === (int)$iv['id']) $kmPreselect = (int)$iv['kilometrage'];
+}
 
 // Réparations déjà enregistrées par ce technicien
 $stmt = $conn->prepare("
@@ -191,27 +186,19 @@ include '../includes/header.php';
         <form method="POST">
             <input type="hidden" name="form" value="new_reparation">
             <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+            <input type="hidden" name="return" value="<?php echo h($returnKey); ?>">
             <div class="tv2-form-group">
                 <label for="repIntervention">Intervention</label>
                 <select name="intervention_id" id="repIntervention" required>
                     <option value="">Sélectionner une intervention en cours</option>
                     <?php foreach ($interventionsDisponibles as $iv): ?>
-                        <option value="<?php echo (int)$iv['id']; ?>" <?php echo $preselectIntervention === (int)$iv['id'] ? 'selected' : ''; ?>>
+                        <option value="<?php echo (int)$iv['id']; ?>" data-km="<?php echo (int)$iv['kilometrage']; ?>" <?php echo $preselectIntervention === (int)$iv['id'] ? 'selected' : ''; ?>>
                             <?php echo h(($iv['type'] ?: 'Intervention') . ' — ' . $iv['marque'] . ' ' . $iv['modele'] . ' (' . $iv['immatriculation'] . ') — ' . $iv['client_prenom'] . ' ' . $iv['client_nom']); ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="tv2-form-group"><label for="repTitre">Titre</label><input type="text" name="titre" id="repTitre" required placeholder="Ex. Remplacement des plaquettes de frein"></div>
-            <div class="tv2-form-group"><label for="repDescription">Description générale</label><textarea name="description" id="repDescription" required placeholder="Ex. Bruit métallique au freinage à l'avant…"></textarea></div>
-            <div class="tv2-form-group"><label for="repDiagnostic">Diagnostic</label><textarea name="diagnostic" id="repDiagnostic" required placeholder="Ex. Plaquettes avant usées à 90 %…"></textarea></div>
-            <div class="tv2-form-group"><label for="repTravaux">Travaux effectués</label><textarea name="travaux_effectues" id="repTravaux" required placeholder="Ex. Remplacement des plaquettes avant, purge du circuit…"></textarea></div>
-            <div class="tv2-form-group"><label for="repPieces">Pièces utilisées</label><textarea name="pieces_utilisees" id="repPieces" placeholder="Ex. 2 plaquettes avant Bosch, liquide de frein DOT4"></textarea></div>
-            <div class="tv2-form-row">
-                <div class="tv2-form-group"><label for="repDuree">Durée (heures)</label><input type="number" name="duree_intervention" id="repDuree" required min="0" step="0.5" placeholder="Ex. 1.5"></div>
-                <div class="tv2-form-group"><label for="repCout">Coût (XAF)</label><input type="number" name="cout" data-only="digits" inputmode="numeric" id="repCout" required min="0" step="1" placeholder="Ex. 25000"></div>
-            </div>
-            <div class="tv2-form-group"><label for="repRecommandations">Recommandations</label><textarea name="recommandations" id="repRecommandations" placeholder="Ex. Contrôler les disques dans 5 000 km"></textarea></div>
+            <?php repairReportFormFields('tv2', $old, $kmPreselect); ?>
             <div class="tv2-modal-actions">
                 <button type="button" class="tv2-btn-outline" id="closeReparationModal">Annuler</button>
                 <button type="submit" class="tv2-btn-primary">Enregistrer et clôturer</button>
@@ -226,6 +213,19 @@ document.addEventListener('DOMContentLoaded', function () {
     if (openBtn) openBtn.addEventListener('click', function () { overlay.classList.add('show'); });
     document.getElementById('closeReparationModal').addEventListener('click', function () { overlay.classList.remove('show'); });
     overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.classList.remove('show'); });
+
+    // Kilométrage actuel du véhicule de l'intervention choisie : aide et minimum du champ.
+    var select = document.getElementById('repIntervention');
+    var km = document.getElementById('repKilometrage');
+    var kmHint = document.getElementById('repKmActuel');
+    function syncKm() {
+        var opt = select.options[select.selectedIndex];
+        var value = opt && opt.dataset.km !== undefined ? parseInt(opt.dataset.km, 10) : NaN;
+        km.min = isNaN(value) ? 0 : value;
+        kmHint.textContent = isNaN(value) ? '' : 'Kilométrage actuel : ' + value.toLocaleString('fr-FR') + ' km';
+    }
+    select.addEventListener('change', syncKm);
+    syncKm();
     <?php if ($action === 'new' || !empty($formErrors)): ?>
     overlay.classList.add('show');
     <?php endif; ?>

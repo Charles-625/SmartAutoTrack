@@ -9,6 +9,8 @@ require_once 'includes/helpers.php';
  *
  * Accès : rôle « technicien ».
  * Page en lecture seule. Filtres GET : categorie, date_from, date_to.
+ * Un rapport de fin d'intervention (description multi-lignes, voir
+ * activity_log_is_report()) s'affiche replié sous « Voir le rapport ».
  * Table lue : journalactivites, uniquement via activity_log_fetch().
  */
 
@@ -27,11 +29,13 @@ $dbNow = $conn->query('SELECT NOW()')->fetchColumn();
 // technicien. Le cloisonnement est appliqué une seule fois, dans
 // activity_log_fetch() (includes/activity_log.php).
 //
-// Traçabilité automatique des actions métier — jamais un rapport rédigé à la
-// main : chaque ligne est générée depuis l'action réellement effectuée
-// (démarrage, clôture, anomalie constatée, réparation enregistrée...) via
+// Traçabilité automatique des actions métier : chaque ligne est générée
+// depuis l'action réellement effectuée (démarrage, clôture, anomalie
+// constatée, réparation enregistrée...) via
 // includes/activity_log.php::log_activity(), et mise en phrase à la 2e
-// personne par tv2_phrase() (technicien/includes/helpers.php).
+// personne par tv2_phrase() (technicien/includes/helpers.php). Seule
+// exception au texte libre : le rapport de fin d'intervention, rempli dans le
+// formulaire structuré de clôture (includes/repair_report.php).
 $categorieFilter = $_GET['categorie'] ?? '';
 $dateFrom = $_GET['date_from'] ?? '';
 $dateTo = $_GET['date_to'] ?? '';
@@ -100,6 +104,9 @@ include '../includes/header.php';
                             <div>
                                 <div class="tv2-timeline-title"><?php echo h(tv2_phrase($j, $selfId)); ?></div>
                                 <div class="tv2-timeline-time"><?php echo h(v2_relative($j['dateHeure'], $dbNow)); ?> · <?php echo h(date('d/m/Y H:i', strtotime($j['dateHeure']))); ?></div>
+                                <?php if (activity_log_is_report($j)): ?>
+                                    <details style="margin-top:6px;"><summary style="cursor:pointer; font-size:12.5px; font-weight:700; color:#D97706;">Voir le rapport</summary><div style="white-space:pre-line; font-size:13px; line-height:1.55; margin-top:6px; padding:10px 12px; border-radius:10px; background:#F7F3EC;"><?php echo h($j['description']); ?></div></details>
+                                <?php endif; ?>
                             </div>
                         </div>
                     <?php endforeach; ?>

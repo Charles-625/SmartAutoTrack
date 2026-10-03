@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
+require_once '../includes/subscription.php';
 
 /**
  * Liste et gestion des comptes clients (espace Administrateur).
@@ -14,9 +15,15 @@ require_once 'includes/helpers.php';
  *     l'inscrit au journal d'activité ;
  *   - GET `search` / `type` : filtres de la liste.
  *
- * Tables : utilisateur, client, entreprise, vehicule, anomalie (lecture),
- * paiement/intervention/vehicule/utilisateur (suppression).
- * Liens : client_detail.php, includes/activity_log.php (log_activity).
+ * Colonne « Abonnement » : Gratuit, Essai ou Premium selon l'abonnement
+ * ACTIF qui couvre l'instant présent (règle de subscriptionActive()) ;
+ * toujours « Gratuit » tant que la migration des abonnements n'est pas appliquée.
+ *
+ * Tables : utilisateur, client, entreprise, vehicule, anomalie, abonnement
+ * (lecture), paiement/intervention/vehicule/utilisateur (suppression ;
+ * abonnement et ia_usage suivent en CASCADE).
+ * Liens : client_detail.php, abonnements.php, includes/activity_log.php
+ * (log_activity), includes/subscription.php.
  */
 requireRole('admin');
 
@@ -96,6 +103,22 @@ $stmt = $conn->prepare("
 ");
 $stmt->execute($params);
 $clients = $stmt->fetchAll();
+
+// Périodicité de l'abonnement actif de chaque client (une seule requête,
+// heure calculée en PHP comme dans includes/subscription.php).
+$activePeriodByClient = [];
+if (subscriptionsReady($conn)) {
+    $nowSql = date('Y-m-d H:i:s');
+    $stmt = $conn->prepare("
+        SELECT idClient, periodicite FROM abonnement
+        WHERE statut = 'ACTIF' AND dateDebut <= ? AND dateFin > ?
+        ORDER BY dateFin ASC
+    ");
+    $stmt->execute([$nowSql, $nowSql]);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $activePeriodByClient[(int)$row['idClient']] = $row['periodicite']; // tri croissant : la fin la plus tardive gagne
+    }
+}
 
 $stmt = $conn->query("
     SELECT COUNT(*) AS total,
@@ -184,7 +207,8 @@ include '../includes/header.php';
                                     <td><?php echo h($c['email']); ?><div style="font-size:11.5px; color:#8B90B3;"><?php echo h($c['telephone']); ?></div></td>
                                     <td><span class="av2-badge neutral"><?php echo (int)$c['vehicles_count']; ?></span></td>
                                     <td><span class="av2-badge <?php echo $c['active_anomalies'] > 0 ? 'bad' : 'ok'; ?>"><?php echo (int)$c['active_anomalies']; ?></span></td>
-                                    <td><span class="av2-badge neutral">Gratuit</span></td>
+                                    <?php $period = $activePeriodByClient[(int)$c['id']] ?? null; ?>
+                                    <td><span class="av2-badge <?php echo h($period === null ? 'neutral' : ($period === 'ESSAI' ? 'warn' : 'ok')); ?>"><?php echo h($period === null ? 'Gratuit' : ($period === 'ESSAI' ? 'Essai' : 'Premium')); ?></span></td>
                                     <td><?php echo h(date('d/m/Y', strtotime($c['created_at']))); ?></td>
                                     <td>
                                         <div style="display:flex; gap:6px; flex-wrap:wrap;">

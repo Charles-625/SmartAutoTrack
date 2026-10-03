@@ -5,7 +5,9 @@ require_once '../includes/payments.php';
 
 /**
  * Endpoint AJAX (JSON) : interrogé périodiquement par client/reparations.php
- * pour connaître l'état d'un paiement CamPay en cours.
+ * (paiement d'une réparation) et client/abonnement.php (paiement d'un
+ * abonnement Premium, sans réparation liée) pour connaître l'état d'un
+ * paiement CamPay en cours.
  *
  * Accès : client connecté, POST avec jeton CSRF.
  * POST : paiement_id (doit appartenir au client connecté, sinon 404).

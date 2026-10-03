@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
+require_once '../includes/subscription.php';
 
 /**
  * Tableau de bord de l'espace client (particulier ou entreprise).
@@ -12,8 +13,11 @@ require_once 'includes/helpers.php';
  * Affiche : véhicules et leur anomalie active la plus récente, interventions
  * actives (5 max), dernières réparations terminées, messages non lus et
  * aperçu des notifications.
- * Tables lues : vehicule, anomalie, intervention, garage, utilisateur,
- * reparation, messages, notifications (et entreprise via getUserProfile()).
+ * Interventions : « qui s'occupe » via v2_intervention_handler() (SmartAutoTrack
+ * et son technicien interne, garage partenaire en appui, ou garage seul).
+ * Tables lues : vehicule, anomalie, intervention, garage, utilisateur, technicien,
+ * reparation, messages, notifications (et entreprise via getUserProfile()),
+ * abonnement (encart « Votre abonnement » : GRATUIT ou PREMIUM via clientIsPremium()).
  * Fichiers liés : client/includes/helpers.php (v2_*), client/includes/sidebar.php.
  */
 requireRole('client');
@@ -74,28 +78,32 @@ if ($vehicleIds) {
 }
 $anomaliesCountParVehicule = array_count_values(array_column($activeAnomalies ?? [], 'idVehicule'));
 
-// Interventions actives (demande envoyée / planifiée / en cours)
+// Interventions actives (demande envoyée / planifiée / en cours), avec le type
+// du technicien (INTERNE/GARAGE) lu par v2_intervention_handler()
 $interventions = [];
 $stmt = $conn->prepare("
     SELECT i.idIntervention AS id, i.type, i.description, i.dateIntervention, i.statut,
            i.idTechnicien, i.idGarage, v.marque, v.modele,
-           g.nomGarage, ut.nom AS technicien_nom, ut.prenom AS technicien_prenom
+           g.nomGarage, ut.nom AS technicien_nom, ut.prenom AS technicien_prenom,
+           t.typeTechnicien AS technicien_type
     FROM intervention i
     JOIN vehicule v ON i.idVehicule = v.idVehicule
     LEFT JOIN garage g ON i.idGarage = g.idGarage
     LEFT JOIN utilisateur ut ON i.idTechnicien = ut.idUtilisateur
+    LEFT JOIN technicien t ON i.idTechnicien = t.idTechnicien
     WHERE i.idClient = ? AND i.statut IN ('PLANIFIEE', 'EN_COURS')
-    ORDER BY CASE WHEN i.statut = 'EN_COURS' THEN 0 WHEN i.idTechnicien IS NULL AND i.idGarage IS NULL THEN 1 ELSE 2 END, i.dateIntervention ASC
+    ORDER BY CASE WHEN i.statut = 'EN_COURS' THEN 0 WHEN i.idTechnicien IS NULL THEN 1 ELSE 2 END, i.dateIntervention ASC
     LIMIT 5
 ");
 $stmt->execute([$_SESSION['user_id']]);
 $interventions = $stmt->fetchAll();
-// Statut d'affichage : une intervention PLANIFIEE sans garage ni technicien
-// n'est encore qu'une demande en attente d'affectation.
+// Statut d'affichage : une intervention PLANIFIEE sans technicien affecté
+// n'est encore qu'une demande en attente d'affectation (par le garage choisi,
+// ou par l'admin pour une demande adressée à SmartAutoTrack).
 foreach ($interventions as &$iv) {
     if ($iv['statut'] === 'EN_COURS') {
         $iv['display'] = 'en_cours';
-    } elseif ($iv['idTechnicien'] === null && $iv['idGarage'] === null) {
+    } elseif ($iv['idTechnicien'] === null) {
         $iv['display'] = 'demande_envoyee';
     } else {
         $iv['display'] = 'planifiee';
@@ -311,17 +319,18 @@ include '../includes/header.php';
                     <?php else: ?>
                         <div style="display:flex; flex-direction:column; gap:10px;">
                             <?php foreach ($interventions as $iv):
+                                // $meta : texte brut, échappé une seule fois à l'affichage (h()).
                                 if ($iv['display'] === 'demande_envoyee') {
                                     $rowClass = 'pending'; $iconBg = '#EFF0F6'; $iconColor = '#6D74A0'; $badgeClass = 'neutral'; $label = 'Demande envoyée';
-                                    $meta = h($iv['marque'] . ' ' . $iv['modele']) . ' · demande envoyée ' . h(v2_relative($iv['dateIntervention'], $dbNow)) . ' — en attente d\'affectation';
+                                    $meta = $iv['marque'] . ' ' . $iv['modele'] . ' · demande envoyée à ' . v2_intervention_handler($iv) . ' ' . v2_relative($iv['dateIntervention'], $dbNow) . ' — en attente d\'affectation d\'un technicien';
                                 } elseif ($iv['display'] === 'en_cours') {
                                     $rowClass = ''; $iconBg = '#FFF4E2'; $iconColor = '#C8871A'; $badgeClass = 'warn'; $label = 'En cours';
-                                    $qui = $iv['nomGarage'] ?: trim(($iv['technicien_prenom'] ?? '') . ' ' . ($iv['technicien_nom'] ?? ''));
-                                    $meta = h($iv['marque'] . ' ' . $iv['modele']) . ($qui ? ' · ' . h($qui) : '') . ' · ' . h(date('d/m/Y', strtotime($iv['dateIntervention'])));
+                                    $qui = v2_intervention_handler($iv);
+                                    $meta = $iv['marque'] . ' ' . $iv['modele'] . ' · ' . $qui . ' · ' . date('d/m/Y', strtotime($iv['dateIntervention']));
                                 } else {
                                     $rowClass = ''; $iconBg = '#EEF1FF'; $iconColor = '#3956E8'; $badgeClass = 'ok'; $label = 'Planifiée';
-                                    $qui = $iv['nomGarage'] ?: trim(($iv['technicien_prenom'] ?? '') . ' ' . ($iv['technicien_nom'] ?? ''));
-                                    $meta = h($iv['marque'] . ' ' . $iv['modele']) . ($qui ? ' · ' . h($qui) : '') . ' · ' . h(date('d/m/Y', strtotime($iv['dateIntervention'])));
+                                    $qui = v2_intervention_handler($iv);
+                                    $meta = $iv['marque'] . ' ' . $iv['modele'] . ' · ' . $qui . ' · ' . date('d/m/Y', strtotime($iv['dateIntervention']));
                                 }
                             ?>
                                 <div class="v2-row <?php echo h($rowClass); ?>">
@@ -429,12 +438,18 @@ include '../includes/header.php';
                 <div class="v2-card v2-panel-sm" style="border-color:#3956E8; border-width:1.5px;">
                     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
                         <h2 style="margin:0; font-family:'Sora', sans-serif; font-size:15px; font-weight:700;">Votre abonnement</h2>
-                        <span style="font-size:10.5px; font-weight:700; color:#4A4F73; background:#F1F2F9; padding:3px 9px; border-radius:20px;">GRATUIT</span>
+                        <?php $dashboardPremium = clientIsPremium($conn, (int)$_SESSION['user_id']); ?>
+                        <span style="font-size:10.5px; font-weight:700; color:<?php echo $dashboardPremium ? '#1E8A4C' : '#4A4F73'; ?>; background:<?php echo $dashboardPremium ? '#E9F6EE' : '#F1F2F9'; ?>; padding:3px 9px; border-radius:20px;"><?php echo $dashboardPremium ? 'PREMIUM' : 'GRATUIT'; ?></span>
                     </div>
+                    <?php if ($dashboardPremium): ?>
+                    <p style="margin:0 0 14px; font-size:13px; line-height:1.5; color:#666C8E;">Votre formule Premium est active : plus de véhicules, assistant IA illimité et historique complet.</p>
+                    <a href="abonnement.php" class="v2-btn-accent" style="display:block; text-align:center; box-sizing:border-box;">Gérer mon abonnement</a>
+                    <?php else: ?>
                     <p style="margin:0 0 14px; font-size:13px; line-height:1.5; color:#666C8E;"><?php echo $isEntreprise
                         ? 'Passez à un palier Premium adapté à la taille de votre parc, avec suivi prioritaire.'
                         : 'Passez à Premium pour un suivi complet et des délais d\'intervention prioritaires.'; ?></p>
                     <a href="abonnement.php" class="v2-btn-accent" style="display:block; text-align:center; box-sizing:border-box;">Découvrir Premium</a>
+                    <?php endif; ?>
                 </div>
 
             </div>

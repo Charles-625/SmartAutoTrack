@@ -10,8 +10,12 @@
  *   $interventionsBadge  (int, optionnel) nombre d'interventions actives à afficher en badge
  *   $isEntreprise        (bool, optionnel) libellés "parc" + item "Anomalies" + sidebar bleu profond
  * Nécessite que config/config.php et la session client soient déjà chargés
- * (fait par la page appelante avant l'include).
+ * (fait par la page appelante avant l'include). Si la page a ouvert $conn
+ * (PDO), le badge de l'item « Abonnement » indique GRATUIT ou PREMIUM
+ * (clientIsPremium(), includes/subscription.php) ; sans $conn, ou tant que la
+ * migration des abonnements n'est pas appliquée, il reste « GRATUIT ».
  */
+require_once __DIR__ . '/../../includes/subscription.php';
 $activeNav = $activeNav ?? 'dashboard';
 $interventionsBadge = $interventionsBadge ?? 0;
 $clientRoleLabel = $clientRoleLabel ?? 'Client particulier';
@@ -20,6 +24,15 @@ $prenomInitial = mb_substr((string)($_SESSION['prenom'] ?? ''), 0, 1);
 $nomInitial = mb_substr((string)($_SESSION['nom'] ?? ''), 0, 1);
 $initials = mb_strtoupper($prenomInitial . $nomInitial) ?: '?';
 $navActive = function (string $key) use ($activeNav) { return $activeNav === $key ? 'active' : ''; };
+// Badge de formule : une erreur de lecture ne doit jamais casser la navigation.
+$sidebarPremium = false;
+if (isset($conn) && $conn instanceof PDO && !empty($_SESSION['user_id'])) {
+    try {
+        $sidebarPremium = clientIsPremium($conn, (int)$_SESSION['user_id']);
+    } catch (Throwable $e) {
+        error_log('[SmartAutoTrack] sidebar abonnement : ' . $e->getMessage());
+    }
+}
 ?>
 <aside class="v2-sidebar <?php echo $isEntreprise ? 'v2-sidebar-entreprise' : ''; ?>">
     <div class="v2-sidebar-logo">
@@ -81,7 +94,7 @@ $navActive = function (string $key) use ($activeNav) { return $activeNav === $ke
         <a href="<?php echo SITE_URL; ?>client/abonnement.php" class="v2-navitem <?php echo $navActive('abonnement'); ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="2" y="6" width="20" height="13" rx="2.5" stroke="#FFFFFF" stroke-width="1.8"/><path d="M2 10H22" stroke="#FFFFFF" stroke-width="1.8"/></svg>
             <span class="label">Abonnement</span>
-            <span style="font-size: 10px; font-weight: 700; color: #12172B; background: #C7CBEA; border-radius: 20px; padding: 2px 8px;">GRATUIT</span>
+            <span style="font-size: 10px; font-weight: 700; color: #12172B; background: <?php echo $sidebarPremium ? '#8DE0FF' : '#C7CBEA'; ?>; border-radius: 20px; padding: 2px 8px;"><?php echo $sidebarPremium ? 'PREMIUM' : 'GRATUIT'; ?></span>
         </a>
         <a href="<?php echo SITE_URL; ?>profile.php" class="v2-navitem <?php echo $navActive('profil'); ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.6" stroke="#FFFFFF" stroke-width="1.8"/><path d="M4.5 20C5.8 16 8.6 14.5 12 14.5C15.4 14.5 18.2 16 19.5 20" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round"/></svg>

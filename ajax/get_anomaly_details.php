@@ -7,7 +7,9 @@ require_once '../config/database.php';
  * Appelé depuis client/vehicle_details.php.
  *
  * Accès : tout utilisateur connecté, avec un filtre propre à chaque rôle
- * (client, technicien, garage, admin) ; tout autre rôle est refusé.
+ * (client, technicien, garage, admin) ; tout autre rôle est refusé. Le
+ * garage ne voit jamais une anomalie rattachée à l'intervention d'un autre
+ * garage (ex. déclarée par le client dans sa demande).
  * GET : id (identifiant de l'anomalie).
  * Tables lues : anomalie, vehicule, intervention, garage.
  */
@@ -56,7 +58,10 @@ try {
         ");
         $stmt->execute([$anomaly_id, $_SESSION['user_id']]);
     } elseif ($_SESSION['role'] === 'garage') {
-        // Uniquement une anomalie liée à au moins une intervention de CE garage
+        // Uniquement une anomalie liée à au moins une intervention de CE garage,
+        // et, si elle est rattachée à une intervention, à une intervention de
+        // CE garage (même règle que garage/anomalies.php : une anomalie
+        // déclarée par le client auprès d'un autre garage ne fuite pas).
         $stmt = $conn->prepare("
             SELECT $cols
             FROM anomalie a
@@ -64,9 +69,12 @@ try {
             WHERE a.idAnomalie = ? AND EXISTS (
                 SELECT 1 FROM intervention gi JOIN garage g ON g.idGarage = gi.idGarage
                 WHERE gi.idVehicule = a.idVehicule AND g.idUtilisateur = ?
-            )
+            ) AND (a.idIntervention IS NULL OR EXISTS (
+                SELECT 1 FROM intervention ai JOIN garage ag ON ag.idGarage = ai.idGarage
+                WHERE ai.idIntervention = a.idIntervention AND ag.idUtilisateur = ?
+            ))
         ");
-        $stmt->execute([$anomaly_id, $_SESSION['user_id']]);
+        $stmt->execute([$anomaly_id, $_SESSION['user_id'], $_SESSION['user_id']]);
     } elseif ($_SESSION['role'] === 'admin') {
         // Vision globale de l'administrateur
         $stmt = $conn->prepare("

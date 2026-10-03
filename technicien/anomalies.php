@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
+require_once '../includes/anomaly_types.php';
 
 /**
  * Espace technicien — Mes anomalies.
@@ -12,6 +13,11 @@ require_once 'includes/helpers.php';
  *   - POST form=new_anomalie : constater une anomalie sur une de MES
  *     interventions EN_COURS ou TERMINEE (statut initial NOUVELLE) et la journaliser.
  *   - GET action=new&intervention_id=… : ouvre directement le formulaire.
+ * Le champ type reste libre ; les types de includes/anomaly_types.php sont
+ * proposés en suggestions (<datalist>).
+ * Liste : les anomalies rattachées à MES interventions (a.idIntervention), y
+ * compris celles déclarées par le client dans sa demande, visibles dès que le
+ * garage m'affecte l'intervention.
  * Tables : anomalie (écriture), intervention, vehicule (lecture),
  *          journalactivites (via technicien_log()).
  */
@@ -27,9 +33,9 @@ $action = $_GET['action'] ?? '';
 $preselectIntervention = filter_var($_GET['intervention_id'] ?? null, FILTER_VALIDATE_INT);
 
 // ============================================================
-// Constater et enregistrer une anomalie (capacité réservée au garage/
-// technicien — jamais au client, cf. règle métier), uniquement sur une
-// intervention qui m'est assignée.
+// Constater et enregistrer une anomalie, uniquement sur une intervention qui
+// m'est assignée (le client, lui, ne peut en déclarer qu'en demandant une
+// intervention).
 // ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'new_anomalie') {
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
@@ -79,7 +85,8 @@ $stmt = $conn->prepare("
 $stmt->execute([$selfId]);
 $interventionsDisponibles = $stmt->fetchAll();
 
-// Anomalies déjà constatées par ce technicien (via ses interventions)
+// Anomalies de mes interventions : mes constats et ceux du garage, ainsi que
+// l'anomalie déclarée par le client à sa demande.
 $stmt = $conn->prepare("
     SELECT a.idAnomalie AS id, a.description, a.type, a.niveau, a.statut, a.dateDetection,
            v.marque, v.modele, v.immatriculation
@@ -119,7 +126,7 @@ include '../includes/header.php';
         <div class="tv2-page-head">
             <div>
                 <h1 class="tv2-h1">Mes anomalies</h1>
-                <p class="tv2-sub">Les anomalies que vous avez constatées sur vos interventions.</p>
+                <p class="tv2-sub">Les anomalies relevées sur vos interventions, y compris celles signalées par le client dans sa demande.</p>
             </div>
             <?php if (!empty($interventionsDisponibles)): ?>
                 <button type="button" class="tv2-btn-primary" id="openAnomalieModal">+ Constater une anomalie</button>
@@ -172,7 +179,12 @@ include '../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="tv2-form-group"><label for="anType">Type</label><input type="text" name="type" id="anType" placeholder="Ex. Freinage"></div>
+            <div class="tv2-form-group"><label for="anType">Type</label><input type="text" name="type" id="anType" list="anTypeSuggestions" maxlength="100" placeholder="Ex. Freinage">
+                <datalist id="anTypeSuggestions">
+                    <?php foreach (ANOMALY_TYPES as $anomalyType): ?>
+                        <option value="<?php echo h($anomalyType); ?>">
+                    <?php endforeach; ?>
+                </datalist></div>
             <div class="tv2-form-group"><label for="anDescription">Description</label><textarea name="description" id="anDescription" required placeholder="Ex. Bruit métallique au freinage à l'avant…"></textarea></div>
             <div class="tv2-form-group">
                 <label for="anNiveau">Niveau</label>

@@ -2,6 +2,10 @@
 /**
  * Paiement des réparations par Mobile Money (CamPay).
  *
+ * Le même flux sert aux abonnements Premium (includes/subscription.php) :
+ * un paiement d'abonnement a idAbonnement renseigné et idIntervention /
+ * idReparation à NULL ; paymentApplyCampayStatus() active alors l'abonnement.
+ *
  * Cycle d'un paiement (table `paiement`) :
  *   EN_ATTENTE  -> créé au lancement, le client valide sur son téléphone
  *   PAYE        -> confirmé par CamPay (webhook ou suivi du statut) ; définitif
@@ -227,10 +231,39 @@ function paymentApplyCampayStatus(PDO $conn, array $paiement, array $transaction
     // même si webhook et suivi de statut arrivent en même temps.
     if ($stmt->rowCount() === 1 && $new === 'PAYE') {
         $montant = number_format((float)$paiement['montant'], 0, ',', ' ');
-        $titre = $paiement['reparation_titre'] ?? null;
-        $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'intervention', 'Paiement reçu', ?)")
-            ->execute([$paiement['idClient'], 'Votre paiement de ' . $montant . ' XAF' . ($titre ? ' pour « ' . $titre . ' »' : '') . ' a bien été reçu. Merci !']);
-        paymentLog($conn, 'Paiement reçu', $paiement, $montant . ' XAF, référence CamPay ' . ($paiement['referenceCampay'] ?? ''));
+        if (!empty($paiement['idAbonnement'])) {
+            // Paiement d'un abonnement Premium (includes/subscription.php).
+            // subscription.php fait lui-même require_once de ce fichier : il
+            // n'est donc chargé qu'ici, à l'exécution, et jamais en tête de
+            // fichier, pour éviter une inclusion circulaire. Les paiements de
+            // réparation (idAbonnement vide) ne passent jamais par ce chemin.
+            require_once __DIR__ . '/subscription.php';
+            // Le paiement est déjà PAYE et ne repassera plus ici : une erreur
+            // d'activation est journalisée (activation manuelle) au lieu de
+            // couper la notification au client.
+            try {
+                subscriptionActivateFromPayment($conn, $paiement);
+            } catch (Throwable $e) {
+                error_log('[SmartAutoTrack] activation abonnement #' . (int)$paiement['idAbonnement'] . ' : ' . $e->getMessage());
+            }
+            $fin = $conn->prepare("SELECT dateFin FROM abonnement WHERE idAbonnement = ? AND statut = 'ACTIF'");
+            $fin->execute([(int)$paiement['idAbonnement']]);
+            $dateFin = $fin->fetchColumn();
+            $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'validation', 'Abonnement Premium', ?)")
+                ->execute([$paiement['idClient'], 'Votre paiement de ' . $montant . ' XAF a bien été reçu. '
+                    . ($dateFin ? 'Votre abonnement Premium est actif jusqu\'au ' . date('d/m/Y', strtotime((string)$dateFin)) . '. Merci !' : 'Votre abonnement Premium va être activé. Merci !')]);
+            subscriptionLog($conn, 'Paiement d\'abonnement reçu', (int)$paiement['idClient'], $montant . ' XAF, référence CamPay ' . ($paiement['referenceCampay'] ?? ''));
+        } else {
+            $titre = $paiement['reparation_titre'] ?? null;
+            $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'intervention', 'Paiement reçu', ?)")
+                ->execute([$paiement['idClient'], 'Votre paiement de ' . $montant . ' XAF' . ($titre ? ' pour « ' . $titre . ' »' : '') . ' a bien été reçu. Merci !']);
+            paymentLog($conn, 'Paiement reçu', $paiement, $montant . ' XAF, référence CamPay ' . ($paiement['referenceCampay'] ?? ''));
+        }
+    } elseif ($stmt->rowCount() === 1 && $new === 'ECHOUE' && !empty($paiement['idAbonnement'])) {
+        // Paiement d'abonnement refusé ou expiré : l'abonnement EN_ATTENTE
+        // lié passe à ECHOUE (même chargement différé que ci-dessus).
+        require_once __DIR__ . '/subscription.php';
+        subscriptionFailFromPayment($conn, $paiement);
     }
     return $stmt->rowCount() === 1 ? $new : $current;
 }

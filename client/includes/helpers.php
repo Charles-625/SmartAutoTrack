@@ -3,7 +3,20 @@
  * Petits helpers d'affichage partagés par les pages "v2" du client particulier.
  * require_once (jamais include simple) pour éviter toute redéclaration si
  * plusieurs pages le chargent dans le même flux.
+ * Constante CLIENT_REQUEST_SAT : valeur spéciale du choix du destinataire
+ * d'une demande (« SmartAutoTrack — nos techniciens », cf. client/interventions.php).
+ * v2_intervention_handler() : libellé « qui s'occupe » d'une intervention
+ * (SmartAutoTrack et son technicien interne, garage partenaire en appui ou
+ * garage seul), partagé par interventions.php, dashboard.php et anomalies.php.
  */
+
+if (!defined('CLIENT_REQUEST_SAT')) {
+    // Valeur du champ garage_id quand le client adresse sa demande à
+    // SmartAutoTrack plutôt qu'à un garage : jamais un id, comparée en liste
+    // blanche côté serveur. La demande est alors créée sans garage ni
+    // technicien (idGarage et idTechnicien NULL) : « à affecter » par l'admin.
+    define('CLIENT_REQUEST_SAT', 'sat');
+}
 
 if (!function_exists('v2_today_fr')) {
     /**
@@ -85,6 +98,41 @@ if (!function_exists('v2_recommend_garages')) {
         $garages[0]['recommended'] = true;
 
         return $garages;
+    }
+}
+
+if (!function_exists('v2_intervention_handler')) {
+    /**
+     * Libellé « qui s'occupe de l'intervention », affiché au client.
+     *
+     * SmartAutoTrack a ses propres techniciens (technicien.typeTechnicien =
+     * 'INTERNE', sans garage) ; un garage partenaire peut les appuyer et sert
+     * alors de lieu de réparation (intervention.idGarage renseigné). D'où :
+     *   - sans garage, technicien interne ou pas encore affecté → « SmartAutoTrack »
+     *     (suivi du nom du technicien s'il est connu) ;
+     *   - garage + technicien interne → « SmartAutoTrack — Prénom Nom · garage
+     *     partenaire : X » ;
+     *   - garage seul (technicien du garage ou pas encore affecté) → nom du garage ;
+     *   - sans garage avec un technicien de garage (ancienne intervention créée
+     *     directement par l'admin) → nom du technicien, comme auparavant.
+     *
+     * @param array $iv Clés lues : nomGarage, technicien_type ('INTERNE' | 'GARAGE'
+     *                  | null), technicien_prenom, technicien_nom (toutes facultatives).
+     * @return string   Texte brut, à échapper à l'affichage (h()).
+     */
+    function v2_intervention_handler(array $iv): string {
+        $garage = trim((string)($iv['nomGarage'] ?? ''));
+        $tech = trim(($iv['technicien_prenom'] ?? '') . ' ' . ($iv['technicien_nom'] ?? ''));
+        $techType = $iv['technicien_type'] ?? null;
+        $sat = 'SmartAutoTrack' . ($tech !== '' ? ' — ' . $tech : '');
+
+        if ($garage === '') {
+            return ($tech !== '' && $techType === 'GARAGE') ? $tech : $sat;
+        }
+        if ($techType === 'INTERNE') {
+            return $sat . ' · garage : ' . $garage;
+        }
+        return $garage;
     }
 }
 

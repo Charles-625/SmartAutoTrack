@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
+require_once '../includes/repair_report.php';
 
 /**
  * Espace technicien — Mes interventions (liste complète, tous statuts).
@@ -11,6 +12,11 @@ require_once 'includes/helpers.php';
  * Actions :
  *   - POST form=start : démarrer une de mes interventions PLANIFIEE (passage
  *     à EN_COURS) et la journaliser.
+ *   - « Marquer terminée » (intervention EN_COURS) : fenêtre sur la page
+ *     même (repairReportFinishModal(), includes/repair_report.php) avec le
+ *     formulaire complet du rapport de fin d'intervention, envoyé en POST au
+ *     traitement de reparations.php (return=interventions) ; retour ici avec
+ *     ?success=repaired.
  *   - GET statut=a_demarrer|en_cours|terminee|annulee, date, vehicule : filtres.
  * Tables : intervention (écriture), vehicule, utilisateur (lecture),
  *          journalactivites (via technicien_log()).
@@ -63,7 +69,7 @@ $whereSql = implode(' AND ', $where);
 
 $stmt = $conn->prepare("
     SELECT i.idIntervention AS id, i.type, i.description, i.dateIntervention, i.statut, i.priorite,
-           v.idVehicule AS vehicule_id, v.marque, v.modele, v.immatriculation,
+           v.idVehicule AS vehicule_id, v.marque, v.modele, v.immatriculation, v.kilometrage,
            uc.nom AS client_nom, uc.prenom AS client_prenom
     FROM intervention i
     JOIN vehicule v ON i.idVehicule = v.idVehicule
@@ -100,6 +106,8 @@ include '../includes/header.php';
 
         <?php if (isset($_GET['success']) && $_GET['success'] === 'started'): ?>
             <div class="tv2-alert success">Intervention démarrée.</div>
+        <?php elseif (($_GET['success'] ?? '') === 'repaired'): ?>
+            <div class="tv2-alert success">Intervention terminée : le rapport de fin d'intervention est enregistré et ajouté au journal d'activité.</div>
         <?php endif; ?>
 
         <div class="tv2-page-head">
@@ -170,7 +178,7 @@ include '../includes/header.php';
                                     <button type="submit" class="tv2-btn-primary tv2-btn-xs">Démarrer</button>
                                 </form>
                             <?php elseif ($info['key'] === 'en_cours'): ?>
-                                <a href="reparations.php?action=new&intervention_id=<?php echo (int)$iv['id']; ?>" class="tv2-btn-primary tv2-btn-xs" style="text-decoration:none;">Terminer &amp; enregistrer la réparation</a>
+                                <?php repairReportFinishLink($iv, 'interventions', 'tv2-btn-primary tv2-btn-xs'); ?>
                                 <a href="anomalies.php?action=new&intervention_id=<?php echo (int)$iv['id']; ?>" class="tv2-btn-outline tv2-btn-xs" style="text-decoration:none;">Constater une anomalie</a>
                             <?php endif; ?>
                         </div>
@@ -180,5 +188,7 @@ include '../includes/header.php';
         <?php endif; ?>
     </main>
 </div>
+
+<?php repairReportFinishModal('interventions'); ?>
 
 <?php include '../includes/footer.php'; ?>

@@ -10,7 +10,8 @@ require_once 'includes/helpers.php';
  * Accès : rôle admin uniquement.
  * Lecture seule : aucune action POST. Affiche les compteurs globaux, la
  * répartition des interventions (donut), la tendance sur 7 jours, les
- * garages à valider, les demandes non affectées, la charge des garages et
+ * garages à valider, les demandes à affecter (adressées à SmartAutoTrack ou
+ * refusées par un garage), la charge des garages et
  * les dernières activités du journal.
  *
  * Tables lues : client, garage, technicien, vehicule, intervention,
@@ -102,8 +103,10 @@ $stmt = $conn->query("
 $garagesAValider = $stmt->fetchAll();
 
 // ============================================================
-// Demandes en attente d'affectation à un garage (jamais affectées, ou
-// refusées par un garage et à réaffecter) — le maillon Client → Garage.
+// Demandes en attente d'affectation : adressées à SmartAutoTrack (ni garage
+// ni technicien) ou refusées par un garage et à réaffecter. À confier à un
+// technicien SmartAutoTrack (garage partenaire en appui facultatif) ou à
+// un garage, depuis interventions.php.
 // ============================================================
 $stmt = $conn->query("
     SELECT i.idIntervention AS id, i.type, i.dateIntervention, i.statut,
@@ -301,10 +304,10 @@ include '../includes/header.php';
 
         <div class="av2-body">
             <div class="av2-col">
-                <!-- Demandes à affecter à un garage -->
+                <!-- Demandes à affecter (technicien SmartAutoTrack ou garage) -->
                 <div class="av2-card av2-panel">
                     <div class="av2-panel-head">
-                        <h2>Demandes à affecter à un garage</h2>
+                        <h2>Demandes à affecter</h2>
                         <a href="interventions.php?garage=none" class="av2-link">Voir toutes (<?php echo (int)$demandesNonAffecteesCount; ?>) →</a>
                     </div>
                     <?php if (empty($demandesNonAffectees)): ?>
@@ -318,7 +321,7 @@ include '../includes/header.php';
                                     </div>
                                     <div style="flex-grow:1; min-width:0;">
                                         <div class="av2-row-title"><?php echo h($d['type'] ?: 'Intervention'); ?> — <?php echo h($d['marque'] . ' ' . $d['modele']); ?></div>
-                                        <div class="av2-row-meta"><?php echo h($d['client_prenom'] . ' ' . $d['client_nom']); ?> · <?php echo h(date('d/m/Y', strtotime($d['dateIntervention']))); ?><?php echo h($refused ? ' · refusée, à réaffecter' : ''); ?></div>
+                                        <div class="av2-row-meta"><?php echo h($d['client_prenom'] . ' ' . $d['client_nom']); ?> · <?php echo h(date('d/m/Y', strtotime($d['dateIntervention']))); ?><?php echo h($refused ? ' · refusée, à réaffecter' : ' · demande à SmartAutoTrack'); ?></div>
                                     </div>
                                     <a href="interventions.php?garage=none" class="av2-btn-primary av2-btn-xs" style="text-decoration:none;">Affecter</a>
                                 </div>

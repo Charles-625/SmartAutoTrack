@@ -5,6 +5,10 @@
  * d'affichage, aucun couplage au rôle) plutôt que de les dupliquer.
  */
 require_once __DIR__ . '/../../client/includes/helpers.php';
+// Intitulés journalisés reconnus par tv2_phrase() : REPAIR_REPORT_ACTIVITY,
+// ANOMALY_CLIENT_LOG_NAME.
+require_once __DIR__ . '/../../includes/repair_report.php';
+require_once __DIR__ . '/../../includes/anomaly_types.php';
 
 if (!function_exists('technicien_log')) {
     /**
@@ -53,6 +57,10 @@ if (!function_exists('tv2_phrase')) {
      * en phrase automatique de l'action déjà journalisée par
      * includes/activity_log.php::log_activity() — la donnée reste la même
      * que celle vue par le garage/l'admin, seule la formulation change.
+     * Le rapport de fin d'intervention (REPAIR_REPORT_ACTIVITY, écrit par le
+     * technicien ou le garage) et l'anomalie déclarée par le client
+     * (ANOMALY_CLIENT_LOG_NAME) ont aussi leur phrase ; le texte du rapport
+     * reste affiché à part par technicien/journal.php.
      */
     function tv2_phrase(array $j, int $selfId): string {
         $isSelf = ((int)($j['idUtilisateur'] ?? 0)) === $selfId;
@@ -63,10 +71,18 @@ if (!function_exists('tv2_phrase')) {
             if ($j['nomActivite'] === 'Intervention assignée à un technicien') {
                 return 'Le garage vous a assigné une intervention (' . $type . ')' . ($vehicule ? ' sur ' . $vehicule : '') . '.';
             }
+            if ($j['nomActivite'] === ANOMALY_CLIENT_LOG_NAME) {
+                return 'Le client a déclaré une anomalie (' . ($j['description'] ?: 'type non précisé') . ')' . ($vehicule ? ' sur ' . $vehicule : '') . '.';
+            }
+            if ($j['nomActivite'] === REPAIR_REPORT_ACTIVITY) {
+                return 'Le garage a rempli le rapport de fin d\'intervention' . ($vehicule ? ' pour le véhicule ' . $vehicule : '') . ' et clôturé l\'intervention.';
+            }
             return $j['nomActivite'];
         }
 
         switch ($j['nomActivite']) {
+            case REPAIR_REPORT_ACTIVITY:
+                return 'Vous avez rempli le rapport de fin d\'intervention' . ($vehicule ? ' pour le véhicule ' . $vehicule : '') . ' et clôturé l\'intervention.';
             case 'Intervention démarrée':
                 return 'Vous avez commencé l\'intervention (' . $type . ')' . ($vehicule ? ' sur ' . $vehicule : '') . '.';
             case 'Intervention terminée':

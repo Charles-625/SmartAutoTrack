@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once '../includes/payments.php';
+require_once '../includes/subscription.php';
 
 /**
  * Réparations du client : historique, filtres, détail, rapport et paiement.
@@ -16,6 +17,11 @@ require_once '../includes/payments.php';
  * Tables lues : reparation, intervention, vehicule, utilisateur, et l'état des
  * paiements via includes/payments.php.
  * Cloisonnement : les réparations sont retrouvées via intervention.idClient.
+ * Formule gratuite : la liste se limite aux SUB_FREE_HISTORY_MONTHS derniers
+ * mois (subscriptionHistorySince(), sur la date de fin, sinon de création),
+ * sauf les réparations non terminées, celles d'une intervention encore ouverte
+ * et les réparations terminées non payées : toujours visibles, pour rester
+ * payables. Le détail et le rapport PDF ne sont pas concernés.
  */
 requireRole('client');
 
@@ -68,6 +74,19 @@ if ($date_to) {
 if ($vehicle_filter) {
     $where_conditions[] = 'i.idVehicule = ?';
     $params[] = $vehicle_filter;
+}
+
+// Historique limité de la formule gratuite (null : aucun filtre). Sans les
+// colonnes CamPay, aucun paiement n'est rattachable à une réparation : toute
+// réparation au coût non nul reste alors visible.
+$historySince = subscriptionHistorySince($conn, (int)$_SESSION['user_id']);
+if ($historySince !== null) {
+    $paidSql = paymentsReady($conn)
+        ? "AND NOT EXISTS (SELECT 1 FROM paiement p WHERE p.idReparation = r.idReparation AND p.statut = 'PAYE')"
+        : '';
+    $where_conditions[] = "(COALESCE(r.dateFin, r.dateReparation) >= ? OR r.statut <> 'TERMINEE'
+        OR i.statut IN ('PLANIFIEE', 'EN_COURS') OR (r.cout > 0 $paidSql))";
+    $params[] = $historySince;
 }
 
 $where_clause = implode(' AND ', $where_conditions);
@@ -128,6 +147,10 @@ include '../includes/header.php';
         <p class="v2-sub">Historique complet de toutes vos réparations</p>
     </div>
 </div>
+
+<?php if ($historySince !== null): ?>
+    <div class="v2-alert premium">Historique limité aux <?php echo (int)SUB_FREE_HISTORY_MONTHS; ?> derniers mois — <a href="abonnement.php">Premium : historique complet</a></div>
+<?php endif; ?>
 
 <!-- Statistiques -->
 <div class="v2-stats">

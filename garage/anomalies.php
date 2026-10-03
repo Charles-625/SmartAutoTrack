@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
+require_once '../includes/anomaly_types.php';
 
 /**
  * Espace garage — Anomalies constatées sur les véhicules suivis par le garage.
@@ -14,10 +15,16 @@ require_once 'includes/helpers.php';
  *   - GET action=new&intervention_id=… : ouvre directement le formulaire,
  *     l'intervention présélectionnée.
  *   - GET statut=active|resolue, niveau=FAIBLE|MOYEN|CRITIQUE : filtres de la liste.
+ * Le champ type reste libre ; les types de includes/anomaly_types.php sont
+ * proposés en suggestions (<datalist>). La liste inclut aussi les anomalies
+ * déclarées par le client dans une demande adressée au garage (rattachées à
+ * l'intervention, cf. client/interventions.php) ; une anomalie rattachée à
+ * l'intervention d'un AUTRE garage n'y figure jamais.
  * Tables : anomalie (écriture), intervention, vehicule, utilisateur (lecture),
  *          journalactivites (via garage_log()).
  * Liés : garage/includes/helpers.php, garage/reparations.php (la réparation
- *        passe les anomalies de l'intervention au statut TRAITEE).
+ *        passe les anomalies de l'intervention au statut TRAITEE),
+ *        includes/anomaly_types.php (types suggérés).
  */
 
 requireRole('garage');
@@ -34,8 +41,8 @@ $action = $_GET['action'] ?? '';
 $preselectIntervention = filter_var($_GET['intervention_id'] ?? null, FILTER_VALIDATE_INT);
 
 // ============================================================
-// Constater et enregistrer une anomalie (capacité réservée au
-// garage/technicien — jamais au client, cf. règle métier).
+// Constater et enregistrer une anomalie sur une intervention du garage
+// (le client, lui, ne peut en déclarer qu'en demandant une intervention).
 // ============================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'new_anomalie') {
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
@@ -91,8 +98,14 @@ $interventionsDisponibles = $stmt->fetchAll();
 // ============================================================
 $statutFilter = $_GET['statut'] ?? '';
 $niveauFilter = $_GET['niveau'] ?? '';
-$where = ["EXISTS (SELECT 1 FROM intervention i WHERE i.idVehicule = a.idVehicule AND i.idGarage = ?)"];
-$params = [$garageId];
+// Véhicule passé par le garage, et anomalie sans intervention ou rattachée à
+// une intervention de CE garage : une anomalie déclarée par le client auprès
+// d'un autre garage ne fuite pas chez un garage qui a déjà suivi le véhicule.
+$where = [
+    "EXISTS (SELECT 1 FROM intervention i WHERE i.idVehicule = a.idVehicule AND i.idGarage = ?)",
+    "(a.idIntervention IS NULL OR ie.idGarage = ?)",
+];
+$params = [$garageId, $garageId];
 if ($statutFilter === 'active') { $where[] = "a.statut IN ('NOUVELLE', 'EN_COURS')"; }
 elseif ($statutFilter === 'resolue') { $where[] = "a.statut IN ('TRAITEE', 'IGNOREE')"; }
 if (in_array($niveauFilter, ['FAIBLE', 'MOYEN', 'CRITIQUE'], true)) { $where[] = 'a.niveau = ?'; $params[] = $niveauFilter; }
@@ -223,7 +236,12 @@ include '../includes/header.php';
             </div>
             <div class="gv2-form-group">
                 <label for="anType">Type d'anomalie</label>
-                <input type="text" name="type" id="anType" placeholder="Ex. Freinage">
+                <input type="text" name="type" id="anType" list="anTypeSuggestions" maxlength="100" placeholder="Ex. Freinage">
+                <datalist id="anTypeSuggestions">
+                    <?php foreach (ANOMALY_TYPES as $anomalyType): ?>
+                        <option value="<?php echo h($anomalyType); ?>">
+                    <?php endforeach; ?>
+                </datalist>
             </div>
             <div class="gv2-form-group">
                 <label for="anNiveau">Niveau</label>

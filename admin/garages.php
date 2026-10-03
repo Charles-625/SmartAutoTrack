@@ -352,15 +352,24 @@ include '../includes/header.php';
         <?php if (!empty($errors)): ?><div class="av2-alert error"><?php foreach ($errors as $e) echo h($e) . '<br>'; ?></div><?php endif; ?>
         <form method="POST" action="garages.php?action=create_garage">
             <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-            <div class="av2-form-group"><label>Nom du garage</label><input type="text" name="nom_garage" required placeholder="Ex. Garage Central Yaoundé"></div>
-            <div class="av2-form-group"><label>Adresse</label><input type="text" name="adresse" placeholder="Ex. Rue 1.234, Bastos, Yaoundé"></div>
-            <p class="av2-modal-sub" style="margin-top:18px;">Compte de connexion du garage</p>
-            <div class="av2-form-group"><label>Nom du contact</label><input type="text" name="nom" data-only="letters" required placeholder="Ex. Mbarga"></div>
-            <div class="av2-form-group"><label>Prénom du contact</label><input type="text" name="prenom" data-only="letters" required placeholder="Ex. Jean"></div>
-            <div class="av2-form-group"><label>Email</label><input type="email" name="email" required placeholder="exemple@gmail.com"></div>
-            <div class="av2-form-group"><label>Téléphone</label><input type="tel" name="telephone" data-only="digits" inputmode="numeric" maxlength="15" required placeholder="Ex. 677123456"></div>
-            <div class="av2-form-group"><label>Mot de passe</label><input type="password" name="mot_de_passe" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>" data-password-policy autocomplete="new-password" placeholder="<?php echo PASSWORD_MIN_LENGTH; ?> caractères minimum"></div>
-            <div class="av2-form-group"><label>Confirmation</label><input type="password" name="confirmation" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>" placeholder="Retapez le mot de passe"></div>
+            <div class="av2-form-section">Le garage</div>
+            <div class="av2-form-group"><label for="ngNomGarage">Nom du garage<span class="av2-required" aria-hidden="true">*</span></label><input type="text" name="nom_garage" id="ngNomGarage" required placeholder="Ex. Garage Central Yaoundé"></div>
+            <div class="av2-form-group"><label for="ngAdresse">Adresse</label><input type="text" name="adresse" id="ngAdresse" placeholder="Ex. Rue 1.234, Bastos, Yaoundé"></div>
+
+            <div class="av2-form-section">Responsable du garage<small>Personne à contacter, titulaire du compte de connexion.</small></div>
+            <div class="av2-form-row">
+                <div class="av2-form-group"><label for="ngNom">Nom<span class="av2-required" aria-hidden="true">*</span></label><input type="text" name="nom" id="ngNom" data-only="letters" required placeholder="Ex. Mbarga"></div>
+                <div class="av2-form-group"><label for="ngPrenom">Prénom<span class="av2-required" aria-hidden="true">*</span></label><input type="text" name="prenom" id="ngPrenom" data-only="letters" required placeholder="Ex. Jean"></div>
+            </div>
+            <div class="av2-form-row">
+                <div class="av2-form-group"><label for="ngEmail">Email<span class="av2-required" aria-hidden="true">*</span></label><input type="email" name="email" id="ngEmail" required placeholder="contact@garage-exemple.cm"></div>
+                <div class="av2-form-group"><label for="ngTelephone">Téléphone<span class="av2-required" aria-hidden="true">*</span></label><input type="tel" name="telephone" id="ngTelephone" data-only="digits" inputmode="numeric" maxlength="15" required placeholder="Ex. 677123456"></div>
+            </div>
+
+            <div class="av2-form-section">Mot de passe de connexion<small>À transmettre au garage, qui pourra le changer depuis son profil.</small></div>
+            <div class="av2-form-group"><label for="ngPassword">Mot de passe<span class="av2-required" aria-hidden="true">*</span></label><input type="password" name="mot_de_passe" id="ngPassword" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>" data-password-policy autocomplete="new-password" placeholder="<?php echo PASSWORD_MIN_LENGTH; ?> caractères minimum"></div>
+            <div class="av2-form-group"><label for="ngConfirmation">Confirmation<span class="av2-required" aria-hidden="true">*</span></label><input type="password" name="confirmation" id="ngConfirmation" required minlength="<?php echo PASSWORD_MIN_LENGTH; ?>" autocomplete="new-password" placeholder="Retapez le mot de passe"></div>
+            <p class="av2-modal-sub" style="margin:0;"><span class="av2-required" aria-hidden="true">*</span> Champs obligatoires</p>
             <div class="av2-modal-actions">
                 <button type="button" class="av2-btn-outline" id="closeNewGarage">Annuler</button>
                 <button type="submit" class="av2-btn-primary">Créer le garage</button>

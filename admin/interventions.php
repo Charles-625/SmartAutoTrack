@@ -10,15 +10,24 @@ require_once 'includes/helpers.php';
  * Accès : rôle admin uniquement.
  * Actions POST (jeton CSRF requis), passées par ?action=… :
  *   - assign_garage : affecte/réaffecte une demande à un garage validé ;
+ *   - assign_internal : affecte une demande à un technicien SmartAutoTrack
+ *     (INTERNE validé), avec un garage partenaire en appui facultatif ;
  *   - new : crée une intervention assignée directement à un technicien ;
  *   - update_status (?id=N) : change le statut de l'intervention.
  * Filtres GET : `status`, `technicien`, `garage` (id ou « none » pour les
  * demandes non affectées), `date`.
  *
+ * Demande « à affecter » : sans technicien, et sans garage (demande adressée
+ * à SmartAutoTrack) ou refusée par un garage. Chaque intervention liée à une
+ * anomalie ouverte affiche son type et sa gravité ; les demandes à affecter
+ * avec une anomalie CRITIQUE ouverte passent en tête de liste.
+ * Colonne Garage : « SmartAutoTrack » quand il n'y a aucun garage, ou garage
+ * partenaire « en appui » quand un technicien interne mène l'intervention.
+ *
  * Tables : intervention (lecture/écriture), vehicule, utilisateur,
- * technicien, garage, notifications, journal d'activité.
+ * technicien, garage, anomalie, notifications, journal d'activité.
  * Liens : intervention_detail.php, admin/includes/helpers.php
- * (admin_reassign_garage), client/interventions.php.
+ * (admin_reassign_garage, admin_assign_internal), client/interventions.php.
  */
 requireRole('admin');
 
@@ -52,6 +61,36 @@ if ($action === 'assign_garage' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = $reassignError;
             } else {
                 header('Location: interventions.php?success=garage_assigned');
+                exit;
+            }
+        }
+    }
+}
+
+// Affecter une demande à un technicien SmartAutoTrack (INTERNE), avec un
+// garage partenaire en appui facultatif. Règles, verrou, journal et
+// notifications : admin_assign_internal() (admin/includes/helpers.php),
+// partagée avec intervention_detail.php.
+if ($action === 'assign_internal' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $errors[] = 'Session expirée, merci de réessayer.';
+    } else {
+        $assignInterventionId = filter_var($_POST['intervention_id'] ?? null, FILTER_VALIDATE_INT);
+        $assignTechnicienId = filter_var($_POST['technicien_id'] ?? null, FILTER_VALIDATE_INT);
+        // Garage en appui facultatif : valeur vide = aucun garage.
+        $supportGarageRaw = (string)($_POST['support_garage_id'] ?? '');
+        $supportGarageId = $supportGarageRaw === '' ? null : filter_var($supportGarageRaw, FILTER_VALIDATE_INT);
+
+        if (!$assignInterventionId) $errors[] = 'Intervention invalide.';
+        if (!$assignTechnicienId) $errors[] = 'Merci de choisir un technicien SmartAutoTrack.';
+        if ($supportGarageId === false) $errors[] = 'Garage invalide.';
+
+        if (empty($errors)) {
+            $assignError = admin_assign_internal($conn, $assignInterventionId, $assignTechnicienId, $supportGarageId);
+            if ($assignError !== null) {
+                $errors[] = $assignError;
+            } else {
+                header('Location: interventions.php?success=internal_assigned');
                 exit;
             }
         }
@@ -157,19 +196,31 @@ elseif ($garage_filter) { $where[] = 'i.idGarage = ?'; $params[] = $garage_filte
 if ($date_filter) { $where[] = 'DATE(i.dateIntervention) = ?'; $params[] = $date_filter; }
 $whereSql = implode(' AND ', $where);
 
+// Anomalie affichée : la plus grave des anomalies ouvertes (NOUVELLE ou
+// EN_COURS) liées à l'intervention. Tri : demandes à affecter avec une
+// anomalie CRITIQUE ouverte d'abord, puis la plus récente en premier comme avant.
 $stmt = $conn->prepare("
     SELECT i.idIntervention AS id, i.type, i.description, i.dateIntervention, i.statut, i.priorite,
            v.marque, v.modele, v.immatriculation,
            uc.prenom AS client_prenom, uc.nom AS client_nom,
-           ut.prenom AS technicien_prenom, ut.nom AS technicien_nom,
-           g.nomGarage
+           ut.prenom AS technicien_prenom, ut.nom AS technicien_nom, t.typeTechnicien,
+           g.nomGarage,
+           (SELECT a.type FROM anomalie a WHERE a.idIntervention = i.idIntervention AND a.statut IN ('NOUVELLE', 'EN_COURS')
+            ORDER BY FIELD(a.niveau, 'CRITIQUE', 'MOYEN', 'FAIBLE'), a.idAnomalie ASC LIMIT 1) AS anomalie_type,
+           (SELECT a.niveau FROM anomalie a WHERE a.idIntervention = i.idIntervention AND a.statut IN ('NOUVELLE', 'EN_COURS')
+            ORDER BY FIELD(a.niveau, 'CRITIQUE', 'MOYEN', 'FAIBLE'), a.idAnomalie ASC LIMIT 1) AS anomalie_niveau
     FROM intervention i
     JOIN vehicule v ON i.idVehicule = v.idVehicule
     JOIN utilisateur uc ON i.idClient = uc.idUtilisateur
     LEFT JOIN utilisateur ut ON i.idTechnicien = ut.idUtilisateur
+    LEFT JOIN technicien t ON t.idTechnicien = i.idTechnicien
     LEFT JOIN garage g ON g.idGarage = i.idGarage
     WHERE $whereSql
-    ORDER BY i.dateIntervention DESC
+    ORDER BY CASE WHEN i.idTechnicien IS NULL AND (i.idGarage IS NULL OR i.statut = 'ANNULEE')
+                   AND EXISTS (SELECT 1 FROM anomalie ac WHERE ac.idIntervention = i.idIntervention
+                               AND ac.niveau = 'CRITIQUE' AND ac.statut IN ('NOUVELLE', 'EN_COURS'))
+              THEN 0 ELSE 1 END,
+             i.dateIntervention DESC
     LIMIT 200
 ");
 $stmt->execute($params);
@@ -178,6 +229,14 @@ $interventions = $stmt->fetchAll();
 $techniciens = $conn->query("
     SELECT u.idUtilisateur AS id, u.nom, u.prenom FROM utilisateur u
     JOIN technicien t ON t.idTechnicien = u.idUtilisateur WHERE t.statutValidation = 'VALIDE' ORDER BY u.nom
+")->fetchAll();
+
+// Techniciens SmartAutoTrack proposés à l'affectation : INTERNE et validés
+// (revérifié côté serveur par admin_assign_internal()).
+$techniciensInternes = $conn->query("
+    SELECT u.idUtilisateur AS id, u.nom, u.prenom, t.specialite FROM utilisateur u
+    JOIN technicien t ON t.idTechnicien = u.idUtilisateur
+    WHERE t.typeTechnicien = 'INTERNE' AND t.statutValidation = 'VALIDE' ORDER BY u.nom
 ")->fetchAll();
 
 $garagesList = $conn->query("SELECT idGarage, nomGarage FROM garage WHERE statutGarage = 'VALIDE' ORDER BY nomGarage")->fetchAll();
@@ -218,7 +277,7 @@ include '../includes/header.php';
         <?php if (isset($_GET['success'])): ?>
             <div class="av2-alert success">
                 <?php
-                $successMsgs = ['created' => 'Intervention créée avec succès.', 'status_updated' => 'Statut mis à jour.', 'garage_assigned' => 'Demande affectée au garage avec succès.'];
+                $successMsgs = ['created' => 'Intervention créée avec succès.', 'status_updated' => 'Statut mis à jour.', 'garage_assigned' => 'Demande affectée au garage avec succès.', 'internal_assigned' => 'Demande affectée au technicien SmartAutoTrack avec succès.'];
                 echo h($successMsgs[$_GET['success']] ?? 'Action effectuée.');
                 ?>
             </div>
@@ -238,7 +297,7 @@ include '../includes/header.php';
                 <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;"><path d="M12 3L22 20H2L12 3Z" stroke="#C8871A" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 10V14" stroke="#C8871A" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="17" r="0.9" fill="#C8871A"/></svg>
                     <div style="flex-grow:1; font-size:13.5px; color:#5C4009;">
-                        <strong><?php echo (int)$stats['non_affectees']; ?> demande(s)</strong> en attente d'affectation à un garage — le client ne verra sa demande avancer qu'une fois transmise à un garage.
+                        <strong><?php echo (int)$stats['non_affectees']; ?> demande(s)</strong> en attente d'affectation — à confier à un technicien SmartAutoTrack (avec un garage si besoin) ou à un garage. Le client ne verra sa demande avancer qu'une fois affectée.
                     </div>
                     <a href="interventions.php?garage=none" class="av2-btn-primary av2-btn-xs" style="text-decoration:none;">Voir les demandes à affecter</a>
                 </div>
@@ -300,7 +359,11 @@ include '../includes/header.php';
                             <tr><th>Véhicule</th><th>Client</th><th>Garage</th><th>Technicien</th><th>Date</th><th>Priorité</th><th>Statut</th><th>Action</th></tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($interventions as $iv): $needsGarage = !$iv['technicien_nom'] && (!$iv['nomGarage'] || $iv['statut'] === 'ANNULEE'); ?>
+                            <?php foreach ($interventions as $iv):
+                                // Demande à affecter : même définition que le compteur non_affectees.
+                                $needsGarage = !$iv['technicien_nom'] && (!$iv['nomGarage'] || $iv['statut'] === 'ANNULEE');
+                                $isInternal = $iv['typeTechnicien'] === 'INTERNE';
+                            ?>
                                 <tr>
                                     <td>
                                         <div class="av2-table-entity">
@@ -308,16 +371,29 @@ include '../includes/header.php';
                                             <?php echo h($iv['type'] ?: 'Intervention'); ?>
                                         </div>
                                         <div style="font-size:11.5px; color:#8B90B3; margin-top:2px;"><?php echo h($iv['marque'] . ' ' . $iv['modele'] . ' · ' . $iv['immatriculation']); ?></div>
+                                        <?php if ($iv['anomalie_niveau']): ?>
+                                            <div style="font-size:11.5px; color:#8B90B3; margin-top:2px;">Anomalie : <?php echo h($iv['anomalie_type'] ?: 'type non précisé'); ?></div>
+                                            <span class="av2-badge <?php echo h(admin_anomaly_badge($iv['anomalie_niveau'])); ?>" style="display:inline-block; margin-top:4px;"><?php echo h('Gravité : ' . ucfirst(strtolower($iv['anomalie_niveau']))); ?></span>
+                                        <?php endif; ?>
                                     </td>
                                     <td><?php echo h($iv['client_prenom'] . ' ' . $iv['client_nom']); ?></td>
                                     <td>
                                         <?php if ($iv['nomGarage']): ?>
-                                            <?php echo h($iv['nomGarage']); ?><?php if ($needsGarage): ?><div style="font-size:11px; color:#C8871A;">refusée — à réaffecter</div><?php endif; ?>
+                                            <?php echo h($iv['nomGarage']); ?>
+                                            <?php if ($needsGarage): ?><div style="font-size:11px; color:#C8871A;">refusée — à réaffecter</div>
+                                            <?php endif; ?>
+                                        <?php elseif ($needsGarage): ?>
+                                            <span class="av2-badge warn">SmartAutoTrack — à affecter</span>
                                         <?php else: ?>
-                                            <span class="av2-badge warn">Non affectée</span>
+                                            <span class="av2-badge info"><?php echo h($iv['technicien_prenom'] . ' ' . $iv['technicien_nom']); ?></span>
                                         <?php endif; ?>
                                     </td>
-                                    <td><?php if ($iv['technicien_nom']): ?><?php echo h($iv['technicien_prenom'] . ' ' . $iv['technicien_nom']); ?><?php else: ?><span style="color:#8B90B3;">—</span><?php endif; ?></td>
+                                    <td>
+                                        <?php if ($iv['technicien_nom']): ?>
+                                            <?php echo h($iv['technicien_prenom'] . ' ' . $iv['technicien_nom']); ?>
+                                            <?php if ($isInternal): ?><div style="font-size:11px; color:#8B90B3;">technicien SmartAutoTrack</div><?php endif; ?>
+                                        <?php else: ?><span style="color:#8B90B3;">—</span><?php endif; ?>
+                                    </td>
                                     <td><?php echo h(date('d/m/Y', strtotime($iv['dateIntervention']))); ?></td>
                                     <td><span class="av2-badge <?php echo h($iv['priorite'] === 'HAUTE' ? 'bad' : ($iv['priorite'] === 'BASSE' ? 'neutral' : 'warn')); ?>"><?php echo h(ucfirst(strtolower($iv['priorite']))); ?></span></td>
                                     <td><span class="av2-badge <?php echo h($statutBadge[$iv['statut']] ?? 'neutral'); ?>"><?php echo h($statutLabels[$iv['statut']] ?? $iv['statut']); ?></span></td>
@@ -329,13 +405,32 @@ include '../includes/header.php';
                                                     <input type="hidden" name="intervention_id" value="<?php echo (int)$iv['id']; ?>">
                                                     <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                                                     <select name="garage_id" required style="font-size:12.5px; padding:5px 8px; border-radius:8px; border:1px solid #DDE0F0;">
-                                                        <option value="">Affecter à...</option>
+                                                        <option value="">Affecter à un garage...</option>
                                                         <?php foreach ($garagesList as $g): ?>
                                                             <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
                                                         <?php endforeach; ?>
                                                     </select>
                                                     <button type="submit" class="av2-btn-primary av2-btn-xs">OK</button>
                                                 </form>
+                                                <?php if (!empty($techniciensInternes)): ?>
+                                                    <form method="POST" action="interventions.php?action=assign_internal" style="display:flex; flex-direction:column; gap:6px;">
+                                                        <input type="hidden" name="intervention_id" value="<?php echo (int)$iv['id']; ?>">
+                                                        <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+                                                        <select name="technicien_id" required aria-label="Technicien SmartAutoTrack" style="font-size:12.5px; padding:5px 8px; border-radius:8px; border:1px solid #DDE0F0;">
+                                                            <option value="">Technicien SmartAutoTrack...</option>
+                                                            <?php foreach ($techniciensInternes as $t): ?>
+                                                                <option value="<?php echo (int)$t['id']; ?>"><?php echo h($t['prenom'] . ' ' . $t['nom'] . ($t['specialite'] ? ' — ' . $t['specialite'] : '')); ?></option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                        <select name="support_garage_id" aria-label="Garage (facultatif)" style="font-size:12.5px; padding:5px 8px; border-radius:8px; border:1px solid #DDE0F0;">
+                                                            <option value="">Garage (facultatif)</option>
+                                                            <?php foreach ($garagesList as $g): ?>
+                                                                <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                        <button type="submit" class="av2-btn-primary av2-btn-xs">Affecter à un technicien interne</button>
+                                                    </form>
+                                                <?php endif; ?>
                                             <?php elseif (!empty($nextStatus[$iv['statut']])): ?>
                                                 <form method="POST" action="interventions.php?action=update_status&id=<?php echo (int)$iv['id']; ?>" style="display:flex; gap:6px;">
                                                     <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
@@ -364,7 +459,7 @@ include '../includes/header.php';
     <div class="av2-modal">
         <h3>Nouvelle intervention</h3>
         <p class="av2-modal-sub">Création et assignation directe par l'administrateur.</p>
-        <?php if (!empty($errors)): ?><div class="av2-alert error"><?php foreach ($errors as $e) echo h($e) . '<br>'; ?></div><?php endif; ?>
+        <?php if (!empty($errors) && $action === 'new'): ?><div class="av2-alert error"><?php foreach ($errors as $e) echo h($e) . '<br>'; ?></div><?php endif; ?>
         <form method="POST" action="interventions.php?action=new">
             <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
             <div class="av2-form-group">
@@ -402,7 +497,8 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('openNewIntervention').addEventListener('click', function () { overlay.classList.add('show'); });
     document.getElementById('closeNewIntervention').addEventListener('click', function () { overlay.classList.remove('show'); });
     overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.classList.remove('show'); });
-    <?php if (!empty($errors)): ?>overlay.classList.add('show');<?php endif; ?>
+    // Modale rouverte seulement pour une erreur de création (pas d'affectation).
+    <?php if (!empty($errors) && $action === 'new'): ?>overlay.classList.add('show');<?php endif; ?>
 });
 </script>
 

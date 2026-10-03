@@ -14,6 +14,14 @@
  *                            dupliquer dans admin/garage/technicien/client)
  *                            évite qu'une page mal écrite ne fuite des
  *                            activités hors du périmètre de son rôle.
+ * Le technicien voit aussi les événements des interventions qui lui sont
+ * affectées (i.idTechnicien), y compris ceux écrits avant son affectation
+ * (ceux du garage de l'intervention ; tous pour un technicien SmartAutoTrack
+ * INTERNE, dont les demandes n'ont pas de garage).
+ * Plus deux aides d'affichage pour les pages journal.php :
+ * activity_log_role_label() / activity_log_perimetre_label() (libellés) et
+ * activity_log_is_report() (description multi-lignes, ex. le rapport de fin
+ * d'intervention écrit par includes/repair_report.php, à afficher replié).
  */
 
 if (!function_exists('log_activity')) {
@@ -109,10 +117,27 @@ if (!function_exists('activity_log_fetch')) {
                 break;
             case ROLE_TECHNICIEN:
                 // Uniquement ses propres actions, ses propres interventions/
-                // réparations affectées, et les anomalies constatées sur une
-                // intervention où il est intervenu — jamais le journal d'un
-                // autre technicien.
-                $where[] = '(j.idUtilisateur = ? OR j.idTechnicien = ?)';
+                // réparations affectées, les anomalies constatées sur une
+                // intervention où il est intervenu, et les événements des
+                // interventions qui lui sont affectées (i.idTechnicien), même
+                // écrits avant son affectation (ex. l'anomalie déclarée par
+                // le client à la demande) — jamais le journal d'un autre
+                // technicien hors de ses interventions. Pour ce dernier cas,
+                // seules les entrées du garage de l'intervention comptent
+                // (j.idGarage = i.idGarage) : une entrée écrite avec
+                // idGarage => false (garage recommandé par SmartAutoTrack)
+                // reste réservée à l'admin et au client.
+                // Exception : un technicien SmartAutoTrack (typeTechnicien
+                // INTERNE) voit tout l'historique de SES interventions. Une
+                // demande adressée à SmartAutoTrack est écrite avec idGarage
+                // NULL (NULL = NULL est faux en SQL) et le garage en appui
+                // n'est posé qu'à l'affectation : sans cette exception, la
+                // demande et l'anomalie déclarée par le client lui
+                // échapperaient.
+                $where[] = "(j.idUtilisateur = ? OR j.idTechnicien = ? OR (i.idTechnicien = ? AND (j.idGarage = i.idGarage
+                    OR EXISTS (SELECT 1 FROM technicien tx WHERE tx.idTechnicien = ? AND tx.typeTechnicien = 'INTERNE'))))";
+                $params[] = $idUtilisateur;
+                $params[] = $idUtilisateur;
                 $params[] = $idUtilisateur;
                 $params[] = $idUtilisateur;
                 break;
@@ -206,6 +231,33 @@ if (!function_exists('activity_log_role_label')) {
     function activity_log_role_label(?string $role): string {
         $labels = ['admin' => 'Administrateur', 'garage' => 'Garage', 'technicien' => 'Technicien', 'client' => 'Client'];
         return $labels[$role] ?? '—';
+    }
+}
+
+/**
+ * Nom de l'activité « rapport de fin d'intervention », écrite par
+ * includes/repair_report.php (repairReportClose()). Défini ici pour que
+ * activity_log_is_report() le reconnaisse sans charger repair_report.php.
+ */
+if (!defined('REPAIR_REPORT_ACTIVITY')) {
+    define('REPAIR_REPORT_ACTIVITY', 'Rapport de fin d\'intervention');
+}
+
+if (!function_exists('activity_log_is_report')) {
+    /**
+     * Indique si une entrée est le rapport de fin d'intervention
+     * (REPAIR_REPORT_ACTIVITY, « Libellé : valeur » par ligne). Les pages
+     * journal l'affichent alors replié sous « Voir le rapport », retours à la
+     * ligne conservés (white-space: pre-line, le texte passant toujours par
+     * h()) ; les autres descriptions, même multi-lignes (ex. une anomalie
+     * constatée), gardent leur affichage habituel — et restent masquées côté
+     * client.
+     *
+     * @param array $j Ligne renvoyée par activity_log_fetch().
+     * @return bool
+     */
+    function activity_log_is_report(array $j): bool {
+        return ($j['nomActivite'] ?? '') === REPAIR_REPORT_ACTIVITY && trim((string)($j['description'] ?? '')) !== '';
     }
 }
 

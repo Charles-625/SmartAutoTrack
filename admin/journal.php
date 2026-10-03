@@ -10,6 +10,9 @@ require_once 'includes/helpers.php';
  * Accès : rôle admin uniquement.
  * Lecture seule. Filtres GET : `categorie`, `garage`, `role_acteur`,
  * `date_from`, `date_to` ; au plus 300 entrées affichées.
+ * Colonne « Contexte » : un rapport de fin d'intervention (description
+ * multi-lignes, activity_log_is_report()) s'affiche replié sous « Voir le
+ * rapport ».
  *
  * Tables lues : journal d'activité (via activity_log_fetch), garage.
  * Liens : includes/activity_log.php.
@@ -125,7 +128,7 @@ include '../includes/header.php';
                                             <span style="color:#8B90B3;">—</span>
                                         <?php endif; ?>
                                     </td>
-                                    <td style="max-width:260px;"><?php if ($j['description']): ?><?php echo h($j['description']); ?><?php else: ?><span style="color:#8B90B3;">—</span><?php endif; ?></td>
+                                    <td style="max-width:260px;"><?php if (activity_log_is_report($j)): ?><details style="margin-top:6px;"><summary style="cursor:pointer; font-size:12.5px; font-weight:700;">Voir le rapport</summary><div style="white-space:pre-line; font-size:13px; line-height:1.55; margin-top:6px; padding:10px 12px; border-radius:10px; background:#F1F2F8;"><?php echo h($j['description']); ?></div></details><?php elseif ($j['description']): ?><?php echo h($j['description']); ?><?php else: ?><span style="color:#8B90B3;">—</span><?php endif; ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

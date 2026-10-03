@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
+require_once '../includes/repair_report.php';
 
 /**
  * Espace technicien — Mes tâches : interventions à démarrer ou en cours.
@@ -10,6 +11,11 @@ require_once 'includes/helpers.php';
  * Accès : rôle « technicien ».
  * Actions :
  *   - POST form=start : démarrer une tâche PLANIFIEE (passage à EN_COURS).
+ *   - « Marquer terminée » (tâche EN_COURS) : fenêtre sur la page même
+ *     (repairReportFinishModal(), includes/repair_report.php) avec le
+ *     formulaire complet du rapport de fin d'intervention, envoyé en POST au
+ *     traitement de reparations.php (return=taches) ; retour ici avec
+ *     ?success=repaired.
  *   - GET statut=toutes|a_demarrer|en_cours : filtre.
  * Tables : intervention (écriture), vehicule, utilisateur (lecture),
  *          journalactivites (via technicien_log()).
@@ -56,7 +62,7 @@ elseif ($statutFilter === 'en_cours') { $where[] = "statut = 'EN_COURS'"; }
 
 $stmt = $conn->prepare("
     SELECT i.idIntervention AS id, i.type, i.description, i.dateIntervention, i.statut, i.priorite,
-           v.marque, v.modele, v.immatriculation,
+           v.marque, v.modele, v.immatriculation, v.kilometrage,
            u.nom AS client_nom, u.prenom AS client_prenom
     FROM intervention i
     JOIN vehicule v ON i.idVehicule = v.idVehicule
@@ -84,7 +90,9 @@ include '../includes/header.php';
 
     <main class="tv2-main">
 
-        <?php if (isset($_GET['success'])): ?>
+        <?php if (($_GET['success'] ?? '') === 'repaired'): ?>
+            <div class="tv2-alert success">Intervention terminée : le rapport de fin d'intervention est enregistré et ajouté au journal d'activité.</div>
+        <?php elseif (isset($_GET['success'])): ?>
             <div class="tv2-alert success">Intervention démarrée.</div>
         <?php endif; ?>
         <?php foreach ($formErrors as $err): ?>
@@ -141,7 +149,7 @@ include '../includes/header.php';
                                                 <button type="submit" class="tv2-btn-primary tv2-btn-xs">Démarrer</button>
                                             </form>
                                         <?php else: ?>
-                                            <a href="reparations.php?action=new&intervention_id=<?php echo (int)$t['id']; ?>" class="tv2-table-link">Renseigner une réparation</a>
+                                            <?php repairReportFinishLink($t, 'taches', 'tv2-btn-primary tv2-btn-xs'); ?>
                                         <?php endif; ?>
                                     </td>
                                 </tr>
@@ -153,5 +161,7 @@ include '../includes/header.php';
         </div>
     </main>
 </div>
+
+<?php repairReportFinishModal('taches'); ?>
 
 <?php include '../includes/footer.php'; ?>

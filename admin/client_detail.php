@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
+require_once '../includes/subscription.php';
 
 /**
  * Fiche détaillée d'un client (espace Administrateur).
@@ -12,7 +13,8 @@ require_once 'includes/helpers.php';
  * clients.php. Lecture seule, aucune action POST.
  *
  * Tables lues : utilisateur, client, entreprise, particulier, vehicule,
- * intervention (10 dernières), garage, anomalie (actives).
+ * intervention (10 dernières), garage, anomalie (actives), abonnement
+ * (formule affichée, via subscriptionActive() ; « Gratuit » sans migration).
  */
 requireRole('admin');
 
@@ -37,6 +39,8 @@ $stmt->execute([$clientId]);
 $client = $stmt->fetch();
 if (!$client) { header('Location: clients.php'); exit; }
 $isEnt = $client['typeClient'] === 'ENTREPRISE';
+// Formule du client : abonnement actif (null = Gratuit, ou migration non appliquée).
+$activeSub = subscriptionActive($conn, (int)$clientId);
 
 // L'état ENUM de la base est converti en code de statut en minuscules,
 // comme attendu par les badges d'affichage.
@@ -95,7 +99,7 @@ include '../includes/header.php';
             </div>
             <div class="av2-card av2-stat-card">
                 <div class="av2-stat-icon" style="background:#E9F6EE;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="2" y="6" width="20" height="13" rx="2.5" stroke="#1E8A4C" stroke-width="1.8"/></svg></div>
-                <div><div class="av2-stat-value">Gratuit</div><div class="av2-stat-label">Abonnement</div></div>
+                <div><div class="av2-stat-value"><?php echo h($activeSub === null ? 'Gratuit' : ($activeSub['periodicite'] === 'ESSAI' ? 'Essai Premium' : 'Premium')); ?></div><div class="av2-stat-label"><?php echo h($activeSub === null ? 'Abonnement' : 'Abonnement, jusqu\'au ' . date('d/m/Y', strtotime($activeSub['dateFin']))); ?></div></div>
             </div>
         </div>
 

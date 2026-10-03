@@ -1,6 +1,7 @@
 <?php
 require_once '../config/config.php';
 require_once '../config/database.php';
+require_once '../includes/repair_report.php';
 
 /**
  * Téléchargement du rapport d'une réparation, sous forme de fichier HTML
@@ -11,6 +12,10 @@ require_once '../config/database.php';
  * pour ses véhicules, le technicien pour ses réparations, le garage pour
  * ses interventions, l'admin pour tout.
  * GET : id (identifiant de la réparation).
+ * Le kilométrage relevé et l'état du véhicule à la sortie (rapport de fin
+ * d'intervention, includes/repair_report.php) sont ajoutés quand les
+ * colonnes reparation.kilometrage / etatVehicule existent
+ * (repairReportReady()) et sont renseignées.
  * Tables lues : reparation, intervention, vehicule, utilisateur, garage.
  */
 requireAuth();
@@ -37,6 +42,10 @@ try {
              v.marque, v.modele, v.immatriculation,
              ut.prenom as technicien_prenom, ut.nom as technicien_nom,
              c.nom as client_nom, c.prenom as client_prenom";
+    // Colonnes du rapport de fin d'intervention, NULL tant que la migration n'est pas appliquée.
+    $cols .= repairReportReady($conn)
+        ? ", r.kilometrage AS kilometrage_releve, r.etatVehicule AS etat_vehicule"
+        : ", NULL AS kilometrage_releve, NULL AS etat_vehicule";
     // Construire la requête selon le rôle. Chaque rôle a sa propre
     // restriction explicite — l'ancien "else" ("pour les admins") était en
     // réalité exécuté pour tout rôle qui n'est ni client ni technicien, donc
@@ -202,8 +211,22 @@ function generateReportHTML($reparation) {
             </div>
             <div class="info-item">
                 <strong>Propriétaire :</strong> ' . e($reparation['client_prenom']) . ' ' . e($reparation['client_nom']) . '
-            </div>
-        </div>
+            </div>';
+
+    // Relevés de fin d'intervention, seulement s'ils ont été saisis.
+    if ($reparation['kilometrage_releve'] !== null) {
+        $html .= '<div class="info-item">
+                <strong>Kilométrage relevé :</strong> ' . number_format((float)$reparation['kilometrage_releve'], 0, ',', ' ') . ' km
+            </div>';
+    }
+    if (!empty($reparation['etat_vehicule'])) {
+        $etat = REPAIR_VEHICLE_STATES[$reparation['etat_vehicule']] ?? $reparation['etat_vehicule'];
+        $html .= '<div class="info-item">
+                <strong>État à la sortie :</strong> ' . e($etat) . '
+            </div>';
+    }
+
+    $html .= '</div>
     </div>
 
     <div class="section">
