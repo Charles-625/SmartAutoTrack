@@ -104,6 +104,7 @@ $columns = [
     // dateAcquisition existe déjà mais a un autre sens (date d'achat) ; annee (millésime)
     // est utilisée telle quelle par le formulaire véhicule existant.
     ['vehicule', 'annee', 'INT NULL'],
+    ['utilisateur', 'googleId', 'VARCHAR(100) NULL'],
 ];
 foreach ($columns as [$t, $c, $def]) {
     if (!colExists($conn, $t, $c)) {
@@ -383,6 +384,34 @@ foreach ($reparationColumns as [$c, $def]) {
     }
 }
 if ($n === $before) echo "  ok, le rapport de fin d'intervention est prêt\n";
+
+// ============================================================
+// 6) Mot de passe oublié (Brevo) & Google OAuth 2.0
+// ============================================================
+echo "\n6. Mot de passe oublié et Google OAuth\n";
+$before = $n;
+if (!tableExists($conn, 'password_resets')) {
+    announce($apply, 'créer la table password_resets');
+    if ($apply) $conn->exec("CREATE TABLE password_resets (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        idUtilisateur INT NOT NULL,
+        token_hash VARCHAR(64) NOT NULL,
+        expires_at DATETIME NOT NULL,
+        used TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_pwd_resets_token (token_hash),
+        INDEX idx_pwd_resets_user (idUtilisateur),
+        CONSTRAINT fk_pwd_resets_user FOREIGN KEY (idUtilisateur) REFERENCES utilisateur(idUtilisateur) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+}
+
+if (!indexExists($conn, 'utilisateur', 'idx_utilisateur_google_id')) {
+    if (colExists($conn, 'utilisateur', 'googleId')) {
+        announce($apply, "créer l'index idx_utilisateur_google_id sur utilisateur(googleId)");
+        if ($apply) $conn->exec("ALTER TABLE utilisateur ADD INDEX idx_utilisateur_google_id (googleId)");
+    }
+}
+if ($n === $before) echo "  ok, réinitialisation de mot de passe et OAuth sont prêts\n";
 
 echo "\n" . ($n === 0 ? "Rien à faire, tout est déjà en place." :
     ($apply ? "$n action(s) appliquée(s)." : "$n action(s) à appliquer. Relancez avec --apply.")) . "\n";

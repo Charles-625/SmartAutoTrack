@@ -24,4 +24,14 @@ return [
     // Assistant IA (Hugging Face Inference Providers)
     'HF_TOKEN' => '',                   // jeton avec la permission « Make calls to Inference Providers »
     'HF_MODEL' => 'Qwen/Qwen2.5-7B-Instruct:fastest',
+
+    // Envoi d'emails transactionnels (Brevo / Sendinblue)
+    'BREVO_API_KEY' => '',              // Clé API v3 (xkeysib-...)
+    'BREVO_SENDER_EMAIL' => 'travel@aclconnext.com', // Adresse expéditeur validée sur Brevo
+    'BREVO_SENDER_NAME' => 'SmartAutoTrack',
+
+    // Authentification Google OAuth 2.0
+    'GOOGLE_CLIENT_ID' => '',           // Obtenu sur Google Cloud Console
+    'GOOGLE_CLIENT_SECRET' => '',       // Obtenu sur Google Cloud Console
+    'GOOGLE_REDIRECT_URI' => '',        // Facultatif (déduit par défaut : SITE_URL/auth/google_callback.php)
 ];
