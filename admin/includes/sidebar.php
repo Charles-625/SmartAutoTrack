@@ -10,6 +10,13 @@
  *                'transactions'|'statistiques'|'journal'|'assistant'|
  *                'messages'|'profil'|'parametres'
  *   $garagesEnAttenteBadge (int, optionnel) nombre de garages à valider
+ * Pastilles rouges de nouveautés (onglets
+ * « Journal d'activité » et « Interventions ») :
+ * activity_log_sidebar_counts() / activity_log_unread_badge()
+ * (includes/activity_log.php), même cloisonnement que le journal du rôle,
+ * hors actions du visiteur ; elles disparaissent à l'ouverture de l'onglet
+ * (activity_log_mark_seen()). Sans $conn, ou tant que la migration
+ * onglet_vu n'est pas appliquée, aucune pastille.
  */
 $activeNav = $activeNav ?? 'dashboard';
 $garagesEnAttenteBadge = $garagesEnAttenteBadge ?? 0;
@@ -19,6 +26,9 @@ $nomInitial = mb_substr((string)($_SESSION['nom'] ?? ''), 0, 1);
 $initials = mb_strtoupper($prenomInitial . $nomInitial) ?: '?';
 // Renvoie la classe « active » pour l'entrée de menu de la page courante.
 $navActive = function (string $key) use ($activeNav) { return $activeNav === $key ? 'active' : ''; };
+// Pastilles de nouveautés (Journal, Interventions) : jamais d'erreur fatale, 0
+// partout sans $conn ou sans la table onglet_vu.
+$sidebarUnread = activity_log_sidebar_counts($conn ?? null, ROLE_ADMIN, (int)($_SESSION['user_id'] ?? 0));
 ?>
 <aside class="av2-sidebar">
     <div class="av2-sidebar-logo">
@@ -53,6 +63,7 @@ $navActive = function (string $key) use ($activeNav) { return $activeNav === $ke
         <a href="<?php echo SITE_URL; ?>admin/interventions.php" class="av2-navitem <?php echo $navActive('interventions'); ?>">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#DEE1F5" stroke-width="1.8"/><path d="M8 8H16M8 12H16M8 16H12" stroke="#DEE1F5" stroke-width="1.8" stroke-linecap="round"/></svg>
             <span class="label">Interventions</span>
+            <?php echo activity_log_unread_badge($sidebarUnread['interventions']); ?>
         </a>
         <a href="<?php echo SITE_URL; ?>admin/reparations.php" class="av2-navitem <?php echo $navActive('reparations'); ?>">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#DEE1F5" stroke-width="1.8"/><path d="M12 7V12L15.5 14" stroke="#DEE1F5" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -89,6 +100,7 @@ $navActive = function (string $key) use ($activeNav) { return $activeNav === $ke
         <a href="<?php echo SITE_URL; ?>admin/journal.php" class="av2-navitem <?php echo $navActive('journal'); ?>">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#DEE1F5" stroke-width="1.8"/><path d="M8 7.5H16M8 11.5H16M8 15.5H13" stroke="#DEE1F5" stroke-width="1.6" stroke-linecap="round"/></svg>
             <span class="label">Journal d'activité</span>
+            <?php echo activity_log_unread_badge($sidebarUnread['journal']); ?>
         </a>
         <a href="<?php echo SITE_URL; ?>admin/assistant.php" class="av2-navitem <?php echo $navActive('assistant'); ?>">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 2L14 9L21 11L14 13L12 20L10 13L3 11L10 9Z" stroke="#DEE1F5" stroke-width="1.6" stroke-linejoin="round"/></svg>

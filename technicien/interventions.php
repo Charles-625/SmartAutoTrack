@@ -21,12 +21,21 @@ require_once '../includes/repair_report.php';
  * Tables : intervention (écriture), vehicule, utilisateur (lecture),
  *          journalactivites (via technicien_log()).
  * Liés : technicien/taches.php (même action « démarrer », vue réduite).
+ * Ouverture de la page : activity_log_mark_seen(..., 'interventions') remet à zéro
+ * la pastille rouge de nouveautés de cet onglet dans la sidebar (table
+ * onglet_vu, includes/activity_log.php).
  */
 
 requireRole('technicien');
 
 $db = new Database();
 $conn = $db->getConnection();
+
+// Onglet « Mes interventions » ouvert : sa pastille rouge de nouveautés
+// disparaît, avant le rendu de la sidebar (sans effet tant que la
+// migration onglet_vu n'est pas appliquée).
+activity_log_mark_seen($conn, (int)$_SESSION['user_id'], 'interventions');
+
 $selfId = (int)$_SESSION['user_id'];
 
 // ============================================================

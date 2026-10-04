@@ -10,14 +10,26 @@ require_once 'includes/helpers.php';
  * Accès : rôle « technicien ».
  * Page en lecture seule. Filtres GET : categorie, date_from, date_to.
  * Un rapport de fin d'intervention (description multi-lignes, voir
- * activity_log_is_report()) s'affiche replié sous « Voir le rapport ».
+ * activity_log_is_report()) s'ouvre dans la fenêtre commune « Voir le
+ * rapport » (bouton report-modal-trigger, données de
+ * activity_log_report_json(), fenêtre construite par assets/js/main.js),
+ * avec un lien « Télécharger en PDF » vers ajax/download_report.php.
  * Table lue : journalactivites, uniquement via activity_log_fetch().
+ * Ouverture de la page : activity_log_mark_seen(..., 'journal') remet à zéro
+ * la pastille rouge de nouveautés de cet onglet dans la sidebar (table
+ * onglet_vu, includes/activity_log.php).
  */
 
 requireRole('technicien');
 
 $db = new Database();
 $conn = $db->getConnection();
+
+// Onglet « Journal d'activité » ouvert : sa pastille rouge de nouveautés
+// disparaît, avant le rendu de la sidebar (sans effet tant que la
+// migration onglet_vu n'est pas appliquée).
+activity_log_mark_seen($conn, (int)$_SESSION['user_id'], 'journal');
+
 $selfId = (int)$_SESSION['user_id'];
 
 // Heure MySQL : les durées relatives (v2_relative) sont calculées sur la même horloge que les dates stockées.
@@ -105,7 +117,7 @@ include '../includes/header.php';
                                 <div class="tv2-timeline-title"><?php echo h(tv2_phrase($j, $selfId)); ?></div>
                                 <div class="tv2-timeline-time"><?php echo h(v2_relative($j['dateHeure'], $dbNow)); ?> · <?php echo h(date('d/m/Y H:i', strtotime($j['dateHeure']))); ?></div>
                                 <?php if (activity_log_is_report($j)): ?>
-                                    <details style="margin-top:6px;"><summary style="cursor:pointer; font-size:12.5px; font-weight:700; color:#D97706;">Voir le rapport</summary><div style="white-space:pre-line; font-size:13px; line-height:1.55; margin-top:6px; padding:10px 12px; border-radius:10px; background:#F7F3EC;"><?php echo h($j['description']); ?></div></details>
+                                    <button type="button" class="report-modal-trigger" data-report="<?php echo h(activity_log_report_json($j)); ?>">Voir le rapport</button>
                                 <?php endif; ?>
                             </div>
                         </div>

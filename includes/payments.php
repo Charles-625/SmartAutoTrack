@@ -8,7 +8,9 @@
  *
  * Cycle d'un paiement (table `paiement`) :
  *   EN_ATTENTE  -> créé au lancement, le client valide sur son téléphone
- *   PAYE        -> confirmé par CamPay (webhook ou suivi du statut) ; définitif
+ *   PAYE        -> confirmé par CamPay (webhook ou suivi du statut) ; définitif.
+ *                  Pour une réparation : client, garage et technicien notifiés
+ *                  une seule fois (paymentNotifyRepairStaff()).
  *   ECHOUE      -> refusé, expiré, ou montant confirmé différent du montant dû
  */
 
@@ -193,9 +195,49 @@ function paymentFindByCampayReference(PDO $conn, string $reference, string $exte
 }
 
 /**
+ * Prévient le garage et le technicien d'une réparation qu'elle vient d'être
+ * payée : compte du garage de l'intervention (garage.idUtilisateur, s'il en a
+ * un) et technicien de la réparation, sans doublon. Appelé une seule fois par
+ * paymentApplyCampayStatus(), après le passage à PAYE. Le paiement est déjà
+ * confirmé : une erreur est seulement journalisée, jamais propagée.
+ *
+ * @param string $montant montant déjà formaté (ex. « 15 000 »)
+ */
+function paymentNotifyRepairStaff(PDO $conn, array $paiement, string $montant): void {
+    try {
+        $stmt = $conn->prepare("
+            SELECT r.titre, r.idTechnicien, g.idUtilisateur AS garage_user,
+                   uc.prenom AS client_prenom, uc.nom AS client_nom
+            FROM reparation r
+            JOIN intervention i ON i.idIntervention = r.idIntervention
+            LEFT JOIN garage g ON g.idGarage = i.idGarage
+            LEFT JOIN utilisateur uc ON uc.idUtilisateur = ?
+            WHERE r.idReparation = ?
+        ");
+        $stmt->execute([(int)$paiement['idClient'], (int)$paiement['idReparation']]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return;
+        }
+        $client = trim(($row['client_prenom'] ?? '') . ' ' . ($row['client_nom'] ?? '')) ?: 'Le client';
+        $titre = $row['titre'] ?: 'Réparation #' . (int)$paiement['idReparation'];
+        $message = 'Paiement reçu : ' . $client . ' a réglé ' . $montant . ' XAF pour « ' . $titre . ' ».';
+
+        // Garage et technicien peuvent être le même compte : une seule notification.
+        $recipients = array_unique(array_filter([(int)($row['garage_user'] ?? 0), (int)($row['idTechnicien'] ?? 0)]));
+        $insert = $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'intervention', 'Paiement reçu', ?)");
+        foreach ($recipients as $userId) {
+            $insert->execute([$userId, $message]);
+        }
+    } catch (Throwable $e) {
+        error_log('[SmartAutoTrack] notification paiement réparation #' . (int)$paiement['idReparation'] . ' : ' . $e->getMessage());
+    }
+}
+
+/**
  * Applique le statut d'une transaction CamPay à un paiement. Idempotent :
- * un paiement PAYE n'est plus jamais modifié, et la notification au client
- * n'est envoyée qu'une fois.
+ * un paiement PAYE n'est plus jamais modifié, et les notifications (client,
+ * puis garage et technicien pour une réparation) ne sont envoyées qu'une fois.
  *
  * @return string nouveau statut du paiement
  */
@@ -258,6 +300,9 @@ function paymentApplyCampayStatus(PDO $conn, array $paiement, array $transaction
             $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'intervention', 'Paiement reçu', ?)")
                 ->execute([$paiement['idClient'], 'Votre paiement de ' . $montant . ' XAF' . ($titre ? ' pour « ' . $titre . ' »' : '') . ' a bien été reçu. Merci !']);
             paymentLog($conn, 'Paiement reçu', $paiement, $montant . ' XAF, référence CamPay ' . ($paiement['referenceCampay'] ?? ''));
+            if (!empty($paiement['idReparation'])) {
+                paymentNotifyRepairStaff($conn, $paiement, $montant);
+            }
         }
     } elseif ($stmt->rowCount() === 1 && $new === 'ECHOUE' && !empty($paiement['idAbonnement'])) {
         // Paiement d'abonnement refusé ou expiré : l'abonnement EN_ATTENTE

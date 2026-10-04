@@ -9,7 +9,10 @@
  * `ia_usage`, paiement.idIntervention rendu facultatif (clé étrangère
  * conservée) et colonne paiement.idAbonnement. Enfin, le rapport de fin
  * d'intervention (includes/repair_report.php) : colonnes
- * reparation.kilometrage et reparation.etatVehicule.
+ * reparation.kilometrage et reparation.etatVehicule. Puis les pastilles
+ * « nouveautés » de la sidebar (includes/activity_log.php) : table
+ * `onglet_vu` (dernière ouverture des onglets Journal et Interventions par
+ * utilisateur) et index sur journalactivites.dateHeure.
  *
  * Idempotent : peut être relancé sans effet si tout est déjà en place.
  * Ne touche à aucune donnée.
@@ -383,6 +386,56 @@ foreach ($reparationColumns as [$c, $def]) {
     }
 }
 if ($n === $before) echo "  ok, le rapport de fin d'intervention est prêt\n";
+
+// ============================================================
+// 6) Pastilles « nouveautés » de la sidebar
+// ============================================================
+// Dernière ouverture des onglets « Journal d'activité » et « Interventions »
+// par utilisateur (includes/activity_log.php : activity_log_mark_seen(),
+// activity_log_unread_counts()). dernierVu est écrit avec NOW() de MySQL, dans
+// le même référentiel que journalactivites.dateHeure ; dernierIdActivite
+// (plus grand idActivite au même instant) départage les entrées écrites dans
+// la même seconde que la visite (dateHeure est à la seconde). Tant que la table
+// manque, activity_log_unread_ready() renvoie false et aucune pastille n'est
+// affichée. L'index sur dateHeure sert le comptage des entrées récentes.
+echo "\n6. Pastilles de nouveautés\n";
+$before = $n;
+
+/**
+ * Indique si un index de la table commence par une colonne donnée (quel que
+ * soit son nom) : un tel index sert déjà les recherches par plage sur elle.
+ *
+ * @param PDO    $c   Connexion à la base.
+ * @param string $t   Table.
+ * @param string $col Première colonne recherchée.
+ * @return bool
+ */
+function indexStartsWith(PDO $c, string $t, string $col): bool {
+    $s = $c->prepare("SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=? AND SEQ_IN_INDEX=1");
+    $s->execute([$t, $col]);
+    return (bool)$s->fetchColumn();
+}
+
+if (!tableExists($conn, 'onglet_vu')) {
+    announce($apply, 'créer la table onglet_vu');
+    if ($apply) $conn->exec("CREATE TABLE onglet_vu (
+        idUtilisateur INT NOT NULL,
+        onglet ENUM('journal','interventions') NOT NULL,
+        dernierVu DATETIME NOT NULL,
+        dernierIdActivite INT NOT NULL DEFAULT 0,
+        PRIMARY KEY (idUtilisateur, onglet),
+        CONSTRAINT fk_onglet_vu_utilisateur FOREIGN KEY (idUtilisateur) REFERENCES utilisateur(idUtilisateur) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+}
+if (tableExists($conn, 'onglet_vu') && !colExists($conn, 'onglet_vu', 'dernierIdActivite')) {
+    announce($apply, 'ajouter onglet_vu.dernierIdActivite');
+    if ($apply) $conn->exec("ALTER TABLE onglet_vu ADD COLUMN dernierIdActivite INT NOT NULL DEFAULT 0 AFTER dernierVu");
+}
+if (tableExists($conn, 'journalactivites') && !indexStartsWith($conn, 'journalactivites', 'dateHeure')) {
+    announce($apply, "créer l'index idx_journal_dateheure (journalactivites.dateHeure)");
+    if ($apply) $conn->exec("ALTER TABLE journalactivites ADD INDEX idx_journal_dateheure (dateHeure)");
+}
+if ($n === $before) echo "  ok, les pastilles de nouveautés sont prêtes\n";
 
 echo "\n" . ($n === 0 ? "Rien à faire, tout est déjà en place." :
     ($apply ? "$n action(s) appliquée(s)." : "$n action(s) à appliquer. Relancez avec --apply.")) . "\n";

@@ -3,16 +3,24 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
+require_once '../includes/payments.php';
 
 /**
  * Supervision des réparations de toute la plateforme (espace Administrateur).
  *
  * Accès : rôle admin uniquement.
  * Lecture seule. Filtres GET : `search` (marque, modèle, immatriculation,
- * titre), `garage`, `statut` ; au plus 200 réparations affichées.
+ * titre), `garage`, `statut`, `paiement` (liste blanche : paye | a_payer,
+ * seulement si paymentsReady()) ; au plus 200 réparations affichées.
+ *
+ * Paiement : colonne « Paiement » (seulement si paymentsReady()) pour chaque
+ * réparation TERMINEE au coût non nul : « Payé » avec la date du paiement,
+ * « Paiement en cours » (tentative EN_ATTENTE récente) ou « En attente de
+ * paiement » (paymentStatesForRepairs(), includes/payments.php). « À payer »
+ * regroupe les réparations terminées payantes sans paiement PAYE.
  *
  * Tables lues : reparation, intervention, vehicule, utilisateur (client,
- * technicien), garage.
+ * technicien), garage, paiement.
  */
 requireRole('admin');
 
@@ -23,6 +31,10 @@ $conn = $db->getConnection();
 $search = $_GET['search'] ?? '';
 $garageFilter = filter_var($_GET['garage'] ?? null, FILTER_VALIDATE_INT);
 $statutFilter = $_GET['statut'] ?? '';
+$paymentsEnabled = paymentsReady($conn);
+$paiementLabels = ['paye' => 'Payé', 'a_payer' => 'À payer'];
+$paiementFilter = $_GET['paiement'] ?? '';
+if (!$paymentsEnabled || !isset($paiementLabels[$paiementFilter])) $paiementFilter = '';
 
 $where = [];
 $params = [];
@@ -33,6 +45,12 @@ if ($search) {
 }
 if ($garageFilter) { $where[] = 'i.idGarage = ?'; $params[] = $garageFilter; }
 if ($statutFilter) { $where[] = 'r.statut = ?'; $params[] = $statutFilter; }
+// Paiement : seules les réparations TERMINEE au coût non nul sont payables.
+if ($paiementFilter !== '') {
+    $where[] = "r.statut = 'TERMINEE' AND r.cout > 0 AND "
+        . ($paiementFilter === 'paye' ? '' : 'NOT ')
+        . "EXISTS (SELECT 1 FROM paiement p WHERE p.idReparation = r.idReparation AND p.statut = 'PAYE')";
+}
 $whereSql = $where ? implode(' AND ', $where) : '1=1';
 
 // Le garage et le client sont retrouvés via l'intervention d'origine ; le
@@ -55,6 +73,26 @@ $stmt = $conn->prepare("
 ");
 $stmt->execute($params);
 $reparations = $stmt->fetchAll();
+
+// État du paiement Mobile Money des réparations TERMINEE au coût non nul :
+// 'PAYE' (avec la date du paiement confirmé), 'EN_ATTENTE' (tentative
+// récente) ou absent (à payer). Rien n'est affiché sans paymentsReady().
+$paymentStates = [];
+$paidDates = [];
+if ($paymentsEnabled) {
+    $payableIds = [];
+    foreach ($reparations as $r) {
+        if ($r['statut'] === 'TERMINEE' && (float)$r['cout'] > 0) $payableIds[] = (int)$r['id'];
+    }
+    $paymentStates = paymentStatesForRepairs($conn, $payableIds);
+    $paidIds = array_keys(array_filter($paymentStates, fn($s) => $s === 'PAYE'));
+    if ($paidIds) {
+        $in = implode(',', array_fill(0, count($paidIds), '?'));
+        $stmt = $conn->prepare("SELECT idReparation, MAX(datePaiement) FROM paiement WHERE statut = 'PAYE' AND idReparation IN ($in) GROUP BY idReparation");
+        $stmt->execute($paidIds);
+        $paidDates = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+}
 
 $garagesList = $conn->query("SELECT idGarage, nomGarage FROM garage WHERE statutGarage = 'VALIDE' ORDER BY nomGarage")->fetchAll();
 
@@ -118,8 +156,16 @@ include '../includes/header.php';
                     <option value="<?php echo h($key); ?>" <?php echo $statutFilter === $key ? 'selected' : ''; ?>><?php echo h($label); ?></option>
                 <?php endforeach; ?>
             </select>
+            <?php if ($paymentsEnabled): ?>
+                <select name="paiement" onchange="this.form.submit()">
+                    <option value="">Paiement : tous</option>
+                    <?php foreach ($paiementLabels as $key => $label): ?>
+                        <option value="<?php echo h($key); ?>" <?php echo $paiementFilter === $key ? 'selected' : ''; ?>>Paiement : <?php echo h(mb_strtolower($label)); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            <?php endif; ?>
             <button type="submit" class="av2-btn-primary">Filtrer</button>
-            <?php if ($search || $garageFilter || $statutFilter): ?><a href="reparations.php" class="av2-btn-outline" style="text-decoration:none;">Effacer</a><?php endif; ?>
+            <?php if ($search || $garageFilter || $statutFilter || $paiementFilter): ?><a href="reparations.php" class="av2-btn-outline" style="text-decoration:none;">Effacer</a><?php endif; ?>
         </form>
 
         <div class="av2-card" style="padding:8px;">
@@ -129,7 +175,7 @@ include '../includes/header.php';
                 <div class="av2-table-wrap">
                     <table class="av2-table">
                         <thead>
-                            <tr><th>Véhicule</th><th>Client</th><th>Garage</th><th>Technicien</th><th>Titre</th><th>Date</th><th>Durée</th><th>Coût</th><th>Statut</th></tr>
+                            <tr><th>Véhicule</th><th>Client</th><th>Garage</th><th>Technicien</th><th>Titre</th><th>Date</th><th>Durée</th><th>Coût</th><th>Statut</th><?php if ($paymentsEnabled): ?><th>Paiement</th><?php endif; ?></tr>
                         </thead>
                         <tbody>
                             <?php foreach ($reparations as $r): ?>
@@ -143,6 +189,21 @@ include '../includes/header.php';
                                     <td><?php echo h($r['dureeIntervention']); ?> h</td>
                                     <td><?php echo number_format((float)$r['cout'], 0, ',', ' '); ?> XAF</td>
                                     <td><span class="av2-badge <?php echo h($statutBadge[$r['statut']] ?? 'neutral'); ?>"><?php echo h($statutLabels[$r['statut']] ?? $r['statut']); ?></span></td>
+                                    <?php if ($paymentsEnabled): ?>
+                                        <td>
+                                            <?php if ($r['statut'] === 'TERMINEE' && (float)$r['cout'] > 0): $payState = $paymentStates[(int)$r['id']] ?? null; ?>
+                                                <?php if ($payState === 'PAYE'): ?>
+                                                    <span class="av2-badge ok">Payé</span><?php if (!empty($paidDates[(int)$r['id']])): ?><div style="font-size:11.5px; color:#8B90B3;">le <?php echo h(date('d/m/Y', strtotime($paidDates[(int)$r['id']]))); ?></div><?php endif; ?>
+                                                <?php elseif ($payState === 'EN_ATTENTE'): ?>
+                                                    <span class="av2-badge warn">Paiement en cours</span>
+                                                <?php else: ?>
+                                                    <span class="av2-badge warn">En attente de paiement</span>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <span style="color:#8B90B3;">—</span>
+                                            <?php endif; ?>
+                                        </td>
+                                    <?php endif; ?>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

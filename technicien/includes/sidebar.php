@@ -9,6 +9,15 @@
  *                    'anomalies'|'historique'|'journal'|'messages'|
  *                    'profil'|'parametres'
  *   $tachesBadge    (int, optionnel) nombre de tâches à traiter à afficher en badge
+ * Pastilles rouges de nouveautés (onglets
+ * « Journal d'activité » et « Mes interventions ») :
+ * activity_log_sidebar_counts() / activity_log_unread_badge()
+ * (includes/activity_log.php), même cloisonnement que le journal du rôle,
+ * hors actions du visiteur ; elles disparaissent à l'ouverture de l'onglet
+ * (activity_log_mark_seen()). Sans $conn, ou tant que la migration
+ * onglet_vu n'est pas appliquée, aucune pastille.
+ * Le badge orange $tachesBadge reste sur « Mes tâches » ; la pastille
+ * « interventions » est sur « Mes interventions » (interventions.php).
  */
 $activeNav = $activeNav ?? 'dashboard';
 $tachesBadge = $tachesBadge ?? 0;
@@ -16,6 +25,9 @@ $prenomInitial = mb_substr((string)($_SESSION['prenom'] ?? ''), 0, 1);
 $nomInitial = mb_substr((string)($_SESSION['nom'] ?? ''), 0, 1);
 $initials = mb_strtoupper($prenomInitial . $nomInitial) ?: '?';
 $navActive = function (string $key) use ($activeNav) { return $activeNav === $key ? 'active' : ''; };
+// Pastilles de nouveautés (Journal, Mes interventions) : jamais d'erreur fatale, 0
+// partout sans $conn ou sans la table onglet_vu.
+$sidebarUnread = activity_log_sidebar_counts($conn ?? null, ROLE_TECHNICIEN, (int)($_SESSION['user_id'] ?? 0));
 ?>
 <aside class="tv2-sidebar">
     <div class="tv2-sidebar-logo">
@@ -38,6 +50,7 @@ $navActive = function (string $key) use ($activeNav) { return $activeNav === $ke
         <a href="<?php echo SITE_URL; ?>technicien/interventions.php" class="tv2-navitem <?php echo $navActive('interventions'); ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#F3E9DC" stroke-width="1.8"/><path d="M8 8H16M8 12H16M8 16H12" stroke="#F3E9DC" stroke-width="1.8" stroke-linecap="round"/></svg>
             <span class="label">Mes interventions</span>
+            <?php echo activity_log_unread_badge($sidebarUnread['interventions']); ?>
         </a>
         <a href="<?php echo SITE_URL; ?>technicien/reparations.php" class="tv2-navitem <?php echo $navActive('reparations'); ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M14.5 4.5L19.5 9.5L9 20H4V15L14.5 4.5Z" stroke="#F3E9DC" stroke-width="1.7" stroke-linejoin="round"/><path d="M12.5 6.5L17.5 11.5" stroke="#F3E9DC" stroke-width="1.7"/></svg>
@@ -54,6 +67,7 @@ $navActive = function (string $key) use ($activeNav) { return $activeNav === $ke
         <a href="<?php echo SITE_URL; ?>technicien/journal.php" class="tv2-navitem <?php echo $navActive('journal'); ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#F3E9DC" stroke-width="1.8"/><path d="M8 7.5H16M8 11.5H16M8 15.5H13" stroke="#F3E9DC" stroke-width="1.6" stroke-linecap="round"/></svg>
             <span class="label">Journal d'activité</span>
+            <?php echo activity_log_unread_badge($sidebarUnread['journal']); ?>
         </a>
         <a href="<?php echo SITE_URL; ?>messages/index.php" class="tv2-navitem <?php echo $navActive('messages'); ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="#F3E9DC" stroke-width="1.8"/><path d="M3 6.5L12 13L21 6.5" stroke="#F3E9DC" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>

@@ -9,13 +9,23 @@ require_once '../includes/subscription.php';
  * Réparations du client : historique, filtres, détail, rapport et paiement.
  *
  * Accès : rôle client uniquement.
- * GET : status ('planifiee' | 'en_cours' | 'terminee' | 'validee'),
- *       date_from, date_to (AAAA-MM-JJ), vehicle (id de véhicule).
+ * GET : status ('planifiee' | 'en_cours' | 'terminee' | 'validee' |
+ *       'a_payer' : terminées au coût non nul et non payées),
+ *       date_from, date_to (AAAA-MM-JJ), vehicle (id de véhicule),
+ *       pay (idReparation) : ouvre directement la fenêtre de paiement de
+ *       cette réparation si elle est payable par ce client
+ *       (paymentPayableRepair(), ni PAYE ni EN_ATTENTE) ; sinon un message
+ *       explique pourquoi. Lien utilisé par le tableau de bord et la fenêtre
+ *       « Voir le rapport » du journal.
  * Pas d'action POST ici : le détail, le rapport PDF et le paiement Mobile Money
  * passent par des appels AJAX (ajax/get_reparation_details.php,
  * ajax/download_report.php, ajax/campay_collect.php, ajax/campay_status.php).
- * Tables lues : reparation, intervention, vehicule, utilisateur, et l'état des
- * paiements via includes/payments.php.
+ * Réparation payée : badge « Payée » et lien « Télécharger le reçu »
+ * (ajax/download_receipt.php?id=<idPaiement>), aussi proposé dans la fenêtre
+ * de paiement dès la confirmation.
+ * Tables lues : reparation, intervention, vehicule, utilisateur, paiement
+ * (reçus, clientRepairReceiptIds()) et l'état des paiements via
+ * includes/payments.php.
  * Cloisonnement : les réparations sont retrouvées via intervention.idClient.
  * Formule gratuite : la liste se limite aux SUB_FREE_HISTORY_MONTHS derniers
  * mois (subscriptionHistorySince(), sur la date de fin, sinon de création),
@@ -24,6 +34,25 @@ require_once '../includes/subscription.php';
  * payables. Le détail et le rapport PDF ne sont pas concernés.
  */
 requireRole('client');
+
+/**
+ * idPaiement PAYE de chaque réparation de ce client (le plus récent s'il y en
+ * a plusieurs), pour le lien « Télécharger le reçu ». Lecture seule ; vide
+ * sans les colonnes CamPay (paymentsReady()).
+ *
+ * @param int[] $repairIds
+ * @return array<int, int> idReparation => idPaiement
+ */
+function clientRepairReceiptIds(PDO $conn, int $clientId, array $repairIds): array {
+    $repairIds = array_values(array_unique(array_map('intval', $repairIds)));
+    if (!$repairIds || !paymentsReady($conn)) {
+        return [];
+    }
+    $in = implode(',', array_fill(0, count($repairIds), '?'));
+    $stmt = $conn->prepare("SELECT idReparation, MAX(idPaiement) FROM paiement WHERE idClient = ? AND statut = 'PAYE' AND idReparation IN ($in) GROUP BY idReparation");
+    $stmt->execute(array_merge([$clientId], $repairIds));
+    return array_map('intval', $stmt->fetchAll(PDO::FETCH_KEY_PAIR));
+}
 
 $db = new Database();
 $conn = $db->getConnection();
@@ -55,7 +84,13 @@ $params = [$_SESSION['user_id']];
 // (déclenché sur l'ancien statut 'validee') continue de fonctionner une fois la
 // réparation achevée.
 $statusFilterMap = ['planifiee' => ['EN_ATTENTE'], 'en_cours' => ['EN_COURS'], 'terminee' => ['TERMINEE'], 'validee' => ['TERMINEE']];
-if ($status_filter && isset($statusFilterMap[$status_filter])) {
+if ($status_filter === 'a_payer') {
+    // Réparations à régler : terminées, au coût non nul, sans paiement PAYE.
+    $where_conditions[] = "r.statut = 'TERMINEE' AND r.cout > 0";
+    if (paymentsReady($conn)) {
+        $where_conditions[] = "NOT EXISTS (SELECT 1 FROM paiement p WHERE p.idReparation = r.idReparation AND p.statut = 'PAYE')";
+    }
+} elseif ($status_filter && isset($statusFilterMap[$status_filter])) {
     $placeholders = implode(',', array_fill(0, count($statusFilterMap[$status_filter]), '?'));
     $where_conditions[] = "r.statut IN ($placeholders)";
     array_push($params, ...$statusFilterMap[$status_filter]);
@@ -114,8 +149,42 @@ $reparations = $stmt->fetchAll();
 
 // Le paiement n'est proposé que si CamPay est configuré et que les tables de
 // paiement existent ; sinon la page reste utilisable, sans bouton de paiement.
+// L'état « Payée » et le reçu restent affichés même si CamPay n'est plus
+// configuré (paymentStatesForRepairs() est vide sans les colonnes CamPay).
 $paymentsEnabled = campayIsConfigured() && paymentsReady($conn);
-$paymentStates = $paymentsEnabled ? paymentStatesForRepairs($conn, array_column($reparations, 'id')) : [];
+$paymentStates = paymentStatesForRepairs($conn, array_column($reparations, 'id'));
+$receiptIds = clientRepairReceiptIds($conn, (int)$_SESSION['user_id'], array_keys(array_filter($paymentStates, fn($st) => $st === 'PAYE')));
+
+// ?pay=<idReparation> : réparation dont la fenêtre de paiement s'ouvre au
+// chargement ($payTarget), ou message expliquant pourquoi ce n'est pas possible.
+$payTarget = null;
+$payMessage = null;
+if (isset($_GET['pay'])) {
+    $payRequestId = filter_var($_GET['pay'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $payable = $payRequestId !== false && $paymentsEnabled
+        ? paymentPayableRepair($conn, (int)$_SESSION['user_id'], $payRequestId)
+        : null;
+    if ($payRequestId === false) {
+        $payMessage = 'Réparation invalide.';
+    } elseif (!$paymentsEnabled) {
+        $payMessage = 'Le paiement en ligne n\'est pas disponible pour le moment.';
+    } elseif ($payable === null) {
+        $payMessage = 'Cette réparation n\'est pas à payer : elle est introuvable, pas encore terminée ou sans coût.';
+    } else {
+        $payRequestState = paymentStatesForRepairs($conn, [$payRequestId])[$payRequestId] ?? null;
+        if ($payRequestState === 'PAYE') {
+            $payMessage = 'Cette réparation est déjà payée. Merci !';
+        } elseif ($payRequestState === 'EN_ATTENTE') {
+            $payMessage = 'Un paiement est déjà en cours pour cette réparation : confirmez-le sur votre téléphone ou réessayez dans quelques minutes.';
+        } else {
+            $payTarget = [
+                'id' => (int)$payable['idReparation'],
+                'montant' => (int)round((float)$payable['cout']),
+                'titre' => $payable['titre'] ?: 'Réparation #' . (int)$payable['idReparation'],
+            ];
+        }
+    }
+}
 
 // Récupérer les véhicules du client pour le filtre
 $stmt = $conn->prepare("SELECT idVehicule AS id, marque, modele, immatriculation FROM vehicule WHERE idClient = ? ORDER BY marque, modele");
@@ -147,6 +216,16 @@ include '../includes/header.php';
         <p class="v2-sub">Historique complet de toutes vos réparations</p>
     </div>
 </div>
+
+<?php if ($payMessage !== null): ?>
+    <div class="v2-alert" style="background:var(--v2-warning-bg); color:var(--v2-warning); margin-bottom:14px;"><?php echo h($payMessage); ?></div>
+<?php endif; ?>
+<?php if ($payTarget !== null): ?>
+    <span id="paymentAutoOpen" hidden
+          data-reparation-id="<?php echo (int)$payTarget['id']; ?>"
+          data-montant="<?php echo (int)$payTarget['montant']; ?>"
+          data-titre="<?php echo h($payTarget['titre']); ?>"></span>
+<?php endif; ?>
 
 <?php if ($historySince !== null): ?>
     <div class="v2-alert premium">Historique limité aux <?php echo (int)SUB_FREE_HISTORY_MONTHS; ?> derniers mois — <a href="abonnement.php">Premium : historique complet</a></div>
@@ -200,6 +279,7 @@ include '../includes/header.php';
                         <option value="en_cours" <?php echo $status_filter === 'en_cours' ? 'selected' : ''; ?>>En cours</option>
                         <option value="terminee" <?php echo $status_filter === 'terminee' ? 'selected' : ''; ?>>Terminée</option>
                         <option value="validee" <?php echo $status_filter === 'validee' ? 'selected' : ''; ?>>Validée</option>
+                        <option value="a_payer" <?php echo $status_filter === 'a_payer' ? 'selected' : ''; ?>>À payer</option>
                     </select>
                 </div>
                 
@@ -317,10 +397,16 @@ include '../includes/header.php';
                                     <i class="fas fa-download"></i> Rapport
                                 </button>
                             <?php endif; ?>
-                            <?php if ($paymentsEnabled && $reparation['statut'] === 'validee' && (float)$reparation['cout'] > 0): $payState = $paymentStates[(int)$reparation['id']] ?? null; ?>
-                                <?php if ($payState === 'PAYE'): ?>
-                                    <span class="badge badge-success"><i class="fas fa-check-circle"></i> Payée</span>
-                                <?php elseif ($payState === 'EN_ATTENTE'): ?>
+                            <?php $payState = $paymentStates[(int)$reparation['id']] ?? null; ?>
+                            <?php if ($payState === 'PAYE'): ?>
+                                <span class="badge badge-success"><i class="fas fa-check-circle"></i> Payée</span>
+                                <?php if (isset($receiptIds[(int)$reparation['id']])): ?>
+                                    <a class="btn btn-outline btn-sm" href="../ajax/download_receipt.php?id=<?php echo (int)$receiptIds[(int)$reparation['id']]; ?>" target="_blank" rel="noopener">
+                                        <i class="fas fa-file-invoice"></i> Télécharger le reçu
+                                    </a>
+                                <?php endif; ?>
+                            <?php elseif ($paymentsEnabled && $reparation['statut'] === 'validee' && (float)$reparation['cout'] > 0): ?>
+                                <?php if ($payState === 'EN_ATTENTE'): ?>
                                     <span class="badge badge-warning"><i class="fas fa-hourglass-half"></i> Paiement en cours</span>
                                 <?php else: ?>
                                     <button class="btn btn-primary btn-sm js-pay-repair"
@@ -385,6 +471,13 @@ include '../includes/header.php';
             <div id="paymentStepWait" style="display: none; text-align: center; padding: 1rem 0;">
                 <i class="fas fa-spinner fa-spin fa-2x" style="color: var(--primary-color);"></i>
                 <p id="paymentWaitText" style="margin-top: 1rem;"></p>
+            </div>
+            <div id="paymentStepDone" style="display: none; text-align: center; padding: 1rem 0;">
+                <i class="fas fa-check-circle fa-2x" style="color: #1E8A4C;"></i>
+                <p style="margin-top: 1rem;">Paiement reçu, merci !</p>
+                <a id="paymentReceiptLink" class="btn btn-primary" href="#" target="_blank" rel="noopener">
+                    <i class="fas fa-file-invoice"></i> Télécharger le reçu
+                </a>
             </div>
         </div>
     </div>
@@ -663,14 +756,38 @@ let paymentRepairId = null;
 let paymentPollTimer = null;
 let paymentLaunched = false;
 
-$(document).on('click', '.js-pay-repair', function() {
-    const btn = $(this);
-    paymentRepairId = btn.data('reparation-id');
-    $('#paymentTitre').text(btn.data('titre'));
-    $('#paymentMontant').text(Number(btn.data('montant')).toLocaleString('fr-FR'));
+/**
+ * Ouvre la fenêtre de paiement d'une réparation : bouton « Payer » de la
+ * liste, ou ?pay=<id> au chargement (#paymentAutoOpen). Textes posés avec
+ * text(), jamais interprétés comme du HTML.
+ */
+function openPaymentModal(repairId, montant, titre) {
+    paymentRepairId = repairId;
+    $('#paymentTitre').text(titre);
+    $('#paymentMontant').text(Number(montant).toLocaleString('fr-FR'));
     $('#paymentStepWait').hide();
+    $('#paymentStepDone').hide();
     $('#paymentStepForm').show();
     $('#paymentModal').fadeIn();
+}
+
+$(document).on('click', '.js-pay-repair', function() {
+    const btn = $(this);
+    openPaymentModal(btn.data('reparation-id'), btn.data('montant'), btn.data('titre'));
+});
+
+// ?pay=<id> validé côté serveur : fenêtre ouverte d'emblée, puis le
+// paramètre est retiré de l'adresse pour qu'un rechargement après
+// paiement ne la rouvre pas.
+$(function() {
+    const auto = $('#paymentAutoOpen');
+    if (!auto.length || !$('#paymentModal').length) return;
+    openPaymentModal(auto.data('reparation-id'), auto.data('montant'), String(auto.data('titre')));
+    try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('pay');
+        window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+    } catch (e) { /* navigateur ancien : l'adresse reste inchangée */ }
 });
 
 $('#closePaymentModal').click(function() {
@@ -724,8 +841,12 @@ function pollPayment(paiementId, attempt) {
             data: { paiement_id: paiementId },
             success: function(response) {
                 if (response.statut === 'PAYE') {
+                    // Reçu proposé tout de suite ; la liste se recharge à la
+                    // fermeture de la fenêtre (paymentLaunched).
                     showToast('Paiement reçu, merci !', 'success');
-                    setTimeout(function() { location.reload(); }, 1200);
+                    $('#paymentReceiptLink').attr('href', SITE_URL + 'ajax/download_receipt.php?id=' + encodeURIComponent(paiementId));
+                    $('#paymentStepWait').hide();
+                    $('#paymentStepDone').show();
                 } else if (response.statut === 'ECHOUE') {
                     showToast('Le paiement a échoué ou a été refusé.', 'error');
                     paymentLaunched = false;

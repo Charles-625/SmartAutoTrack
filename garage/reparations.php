@@ -4,6 +4,7 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 require_once '../includes/repair_report.php';
+require_once '../includes/payments.php';
 
 /**
  * Espace garage — Réparations réalisées par le garage.
@@ -19,9 +20,14 @@ require_once '../includes/repair_report.php';
  *     kilométrage et état du véhicule, résolution de ses anomalies ouvertes,
  *     rapport complet dans le journal et notification du client.
  *   - GET action=new&intervention_id=… : ouvre directement le formulaire.
+ * Paiement : colonne « Paiement » (seulement si paymentsReady()) pour chaque
+ * réparation TERMINEE au coût non nul : « Payé » avec la date du paiement,
+ * « Paiement en cours » (tentative EN_ATTENTE récente) ou « En attente de
+ * paiement » (paymentStatesForRepairs(), includes/payments.php). Le garage
+ * et le technicien sont aussi notifiés au paiement (paymentApplyCampayStatus()).
  * Tables : reparation, intervention, vehicule, anomalie, notifications
- *          (écriture, via repairReportClose()), utilisateur (lecture),
- *          journalactivites (via log_activity()).
+ *          (écriture, via repairReportClose()), utilisateur, paiement
+ *          (lecture), journalactivites (via log_activity()).
  */
 
 requireRole('garage');
@@ -113,6 +119,28 @@ $stmt = $conn->prepare("
 $stmt->execute([$garageId]);
 $reparations = $stmt->fetchAll();
 
+// État du paiement Mobile Money (includes/payments.php) des réparations
+// TERMINEE au coût non nul : 'PAYE' (avec la date du paiement confirmé),
+// 'EN_ATTENTE' (tentative récente) ou absent (à payer). Rien n'est affiché
+// tant que les colonnes de paiement n'existent pas (paymentsReady()).
+$paymentsEnabled = paymentsReady($conn);
+$paymentStates = [];
+$paidDates = [];
+if ($paymentsEnabled) {
+    $payableIds = [];
+    foreach ($reparations as $r) {
+        if ($r['statut'] === 'TERMINEE' && (float)$r['cout'] > 0) $payableIds[] = (int)$r['id'];
+    }
+    $paymentStates = paymentStatesForRepairs($conn, $payableIds);
+    $paidIds = array_keys(array_filter($paymentStates, fn($s) => $s === 'PAYE'));
+    if ($paidIds) {
+        $in = implode(',', array_fill(0, count($paidIds), '?'));
+        $stmt = $conn->prepare("SELECT idReparation, MAX(datePaiement) FROM paiement WHERE statut = 'PAYE' AND idReparation IN ($in) GROUP BY idReparation");
+        $stmt->execute($paidIds);
+        $paidDates = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+}
+
 // Compteur du badge « Demandes d'intervention » de la sidebar.
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idGarage = ? AND idTechnicien IS NULL AND statut = 'PLANIFIEE'");
 $stmt->execute([$garageId]);
@@ -154,7 +182,7 @@ include '../includes/header.php';
                 <div class="gv2-table-wrap">
                     <table class="gv2-table">
                         <thead>
-                            <tr><th>Véhicule</th><th>Client</th><th>Technicien</th><th>Titre</th><th>Date</th><th>Durée</th><th>Coût</th><th>Statut</th></tr>
+                            <tr><th>Véhicule</th><th>Client</th><th>Technicien</th><th>Titre</th><th>Date</th><th>Durée</th><th>Coût</th><th>Statut</th><?php if ($paymentsEnabled): ?><th>Paiement</th><?php endif; ?></tr>
                         </thead>
                         <tbody>
                             <?php foreach ($reparations as $r): ?>
@@ -167,6 +195,21 @@ include '../includes/header.php';
                                     <td><?php echo h($r['dureeIntervention']); ?> h</td>
                                     <td><?php echo number_format((float)$r['cout'], 0, ',', ' '); ?> XAF</td>
                                     <td><span class="gv2-badge <?php echo $r['statut'] === 'TERMINEE' ? 'ok' : 'warn'; ?>"><?php echo h(ucfirst(strtolower($r['statut']))); ?></span></td>
+                                    <?php if ($paymentsEnabled): ?>
+                                        <td>
+                                            <?php if ($r['statut'] === 'TERMINEE' && (float)$r['cout'] > 0): $payState = $paymentStates[(int)$r['id']] ?? null; ?>
+                                                <?php if ($payState === 'PAYE'): ?>
+                                                    <span class="gv2-badge ok">Payé</span><?php if (!empty($paidDates[(int)$r['id']])): ?><div style="font-size:11.5px; color:#8AA0A3;">le <?php echo h(date('d/m/Y', strtotime($paidDates[(int)$r['id']]))); ?></div><?php endif; ?>
+                                                <?php elseif ($payState === 'EN_ATTENTE'): ?>
+                                                    <span class="gv2-badge warn">Paiement en cours</span>
+                                                <?php else: ?>
+                                                    <span class="gv2-badge warn">En attente de paiement</span>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <span style="color:#8AA0A3;">—</span>
+                                            <?php endif; ?>
+                                        </td>
+                                    <?php endif; ?>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

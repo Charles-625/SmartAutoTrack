@@ -4,6 +4,7 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 require_once '../includes/subscription.php';
+require_once '../includes/payments.php';
 
 /**
  * Tableau de bord de l'espace client (particulier ou entreprise).
@@ -17,7 +18,12 @@ require_once '../includes/subscription.php';
  * et son technicien interne, garage partenaire en appui, ou garage seul).
  * Tables lues : vehicule, anomalie, intervention, garage, utilisateur, technicien,
  * reparation, messages, notifications (et entreprise via getUserProfile()),
- * abonnement (encart « Votre abonnement » : GRATUIT ou PREMIUM via clientIsPremium()).
+ * abonnement (encart « Votre abonnement » : GRATUIT ou PREMIUM via clientIsPremium()),
+ * paiement (encart « X réparation(s) à payer — total Y XAF » : réparations
+ * TERMINEE au coût non nul sans paiement PAYE ni tentative EN_ATTENTE récente
+ * (paymentStatesForRepairs()), affiché seulement si paymentsReady() et
+ * campayIsConfigured() ; bouton « Payer » vers reparations.php?pay=<id> de la
+ * plus ancienne, « Voir » vers reparations.php?status=a_payer).
  * Fichiers liés : client/includes/helpers.php (v2_*), client/includes/sidebar.php.
  */
 requireRole('client');
@@ -125,6 +131,26 @@ $stmt = $conn->prepare("
 $stmt->execute([$_SESSION['user_id']]);
 $historique = $stmt->fetchAll();
 
+// Réparations à payer par Mobile Money (encart sous les statistiques). Sans
+// CamPay configuré ou sans les colonnes de paiement, l'encart n'apparaît pas.
+$aPayer = [];
+if (campayIsConfigured() && paymentsReady($conn)) {
+    $stmt = $conn->prepare("
+        SELECT r.idReparation AS id, r.cout
+        FROM reparation r
+        JOIN intervention i ON r.idIntervention = i.idIntervention
+        WHERE i.idClient = ? AND r.statut = 'TERMINEE' AND r.cout > 0
+          AND NOT EXISTS (SELECT 1 FROM paiement p WHERE p.idReparation = r.idReparation AND p.statut = 'PAYE')
+        ORDER BY COALESCE(r.dateFin, r.dateReparation) ASC, r.idReparation ASC
+    ");
+    $stmt->execute([$_SESSION['user_id']]);
+    $aPayer = $stmt->fetchAll();
+    // Une tentative EN_ATTENTE récente bloque un nouveau paiement : exclue.
+    $etatsPaiement = paymentStatesForRepairs($conn, array_column($aPayer, 'id'));
+    $aPayer = array_values(array_filter($aPayer, fn($r) => !isset($etatsPaiement[(int)$r['id']])));
+}
+$aPayerTotal = array_sum(array_map(fn($r) => (int)round((float)$r['cout']), $aPayer));
+
 // Messages non lus (messagerie déjà fonctionnelle, on la relie simplement ici)
 $stmt = $conn->prepare("SELECT COUNT(*) FROM messages WHERE destinataire_id = ? AND lu = 'non'");
 $stmt->execute([$_SESSION['user_id']]);
@@ -226,6 +252,23 @@ include '../includes/header.php';
                 </div>
             </div>
         </div>
+
+        <?php if ($aPayer): ?>
+            <!-- Réparations à payer (Mobile Money) -->
+            <div class="v2-card v2-pay-due">
+                <div>
+                    <strong><?php echo count($aPayer); ?> réparation<?php echo count($aPayer) > 1 ? 's' : ''; ?> à payer</strong>
+                    — total <?php echo number_format($aPayerTotal, 0, ',', ' '); ?> XAF
+                    <div class="v2-pay-due-sub">Réglez par MTN Mobile Money ou Orange Money depuis l'onglet Réparations.</div>
+                </div>
+                <div class="v2-pay-due-actions">
+                    <a href="reparations.php?pay=<?php echo (int)$aPayer[0]['id']; ?>" class="v2-pay-due-btn primary"<?php echo count($aPayer) > 1 ? ' title="Payer la plus ancienne"' : ''; ?>>Payer</a>
+                    <?php if (count($aPayer) > 1): ?>
+                        <a href="reparations.php?status=a_payer" class="v2-pay-due-btn">Voir</a>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
 
         <div class="v2-body">
             <!-- LEFT column -->

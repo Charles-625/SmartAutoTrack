@@ -18,12 +18,20 @@ require_once 'includes/helpers.php';
  * Tables : intervention (écriture), vehicule, utilisateur, technicien (lecture),
  *          journalactivites (via garage_log()).
  * Liés : garage/vehicule.php (fiche véhicule), garage/reparations.php (clôture).
+ * Ouverture de la page : activity_log_mark_seen(..., 'interventions') remet à zéro
+ * la pastille rouge de nouveautés de cet onglet dans la sidebar (table
+ * onglet_vu, includes/activity_log.php).
  */
 
 requireRole('garage');
 
 $db = new Database();
 $conn = $db->getConnection();
+
+// Onglet « Interventions » ouvert : sa pastille rouge de nouveautés
+// disparaît, avant le rendu de la sidebar (sans effet tant que la
+// migration onglet_vu n'est pas appliquée).
+activity_log_mark_seen($conn, (int)$_SESSION['user_id'], 'interventions');
 
 $profile = getUserProfile($conn, (int)$_SESSION['user_id']);
 $garageId = (int)($profile['idGarage'] ?? 0);

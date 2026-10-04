@@ -4,6 +4,7 @@ require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 require_once '../includes/repair_report.php';
+require_once '../includes/payments.php';
 
 /**
  * Espace technicien — Mes réparations.
@@ -23,9 +24,14 @@ require_once '../includes/repair_report.php';
  *     de taches.php / interventions.php, on y revient après succès
  *     (?success=repaired) ; sinon retour sur cette page (?success=created).
  *   - GET action=new&intervention_id=…[&return=…] : ouvre directement le formulaire.
+ * Paiement : colonne « Paiement » (seulement si paymentsReady()) pour chaque
+ * réparation TERMINEE au coût non nul : « Payé » avec la date du paiement,
+ * « Paiement en cours » (tentative EN_ATTENTE récente) ou « En attente de
+ * paiement » (paymentStatesForRepairs(), includes/payments.php). Le garage
+ * et le technicien sont aussi notifiés au paiement (paymentApplyCampayStatus()).
  * Tables : reparation, intervention, vehicule, anomalie, notifications
- *          (écriture, via repairReportClose()), utilisateur (lecture),
- *          journalactivites (via log_activity()).
+ *          (écriture, via repairReportClose()), utilisateur, paiement
+ *          (lecture), journalactivites (via log_activity()).
  */
 
 requireRole('technicien');
@@ -115,6 +121,28 @@ $stmt = $conn->prepare("
 $stmt->execute([$selfId]);
 $reparations = $stmt->fetchAll();
 
+// État du paiement Mobile Money (includes/payments.php) des réparations
+// TERMINEE au coût non nul : 'PAYE' (avec la date du paiement confirmé),
+// 'EN_ATTENTE' (tentative récente) ou absent (à payer). Rien n'est affiché
+// tant que les colonnes de paiement n'existent pas (paymentsReady()).
+$paymentsEnabled = paymentsReady($conn);
+$paymentStates = [];
+$paidDates = [];
+if ($paymentsEnabled) {
+    $payableIds = [];
+    foreach ($reparations as $r) {
+        if ($r['statut'] === 'TERMINEE' && (float)$r['cout'] > 0) $payableIds[] = (int)$r['id'];
+    }
+    $paymentStates = paymentStatesForRepairs($conn, $payableIds);
+    $paidIds = array_keys(array_filter($paymentStates, fn($s) => $s === 'PAYE'));
+    if ($paidIds) {
+        $in = implode(',', array_fill(0, count($paidIds), '?'));
+        $stmt = $conn->prepare("SELECT idReparation, MAX(datePaiement) FROM paiement WHERE statut = 'PAYE' AND idReparation IN ($in) GROUP BY idReparation");
+        $stmt->execute($paidIds);
+        $paidDates = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+}
+
 // Compteur du badge « Mes tâches » de la sidebar (tâches à démarrer).
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idTechnicien = ? AND statut = 'PLANIFIEE'");
 $stmt->execute([$selfId]);
@@ -156,7 +184,7 @@ include '../includes/header.php';
                 <div class="tv2-table-wrap">
                     <table class="tv2-table">
                         <thead>
-                            <tr><th>Véhicule</th><th>Client</th><th>Titre</th><th>Date</th><th>Durée</th><th>Coût</th><th>Statut</th></tr>
+                            <tr><th>Véhicule</th><th>Client</th><th>Titre</th><th>Date</th><th>Durée</th><th>Coût</th><th>Statut</th><?php if ($paymentsEnabled): ?><th>Paiement</th><?php endif; ?></tr>
                         </thead>
                         <tbody>
                             <?php foreach ($reparations as $r): ?>
@@ -168,6 +196,21 @@ include '../includes/header.php';
                                     <td><?php echo h($r['dureeIntervention']); ?> h</td>
                                     <td><?php echo number_format((float)$r['cout'], 0, ',', ' '); ?> XAF</td>
                                     <td><span class="tv2-badge <?php echo $r['statut'] === 'TERMINEE' ? 'ok' : 'warn'; ?>"><?php echo h(ucfirst(strtolower($r['statut']))); ?></span></td>
+                                    <?php if ($paymentsEnabled): ?>
+                                        <td>
+                                            <?php if ($r['statut'] === 'TERMINEE' && (float)$r['cout'] > 0): $payState = $paymentStates[(int)$r['id']] ?? null; ?>
+                                                <?php if ($payState === 'PAYE'): ?>
+                                                    <span class="tv2-badge ok">Payé</span><?php if (!empty($paidDates[(int)$r['id']])): ?><div style="font-size:11.5px; color:#A5977F;">le <?php echo h(date('d/m/Y', strtotime($paidDates[(int)$r['id']]))); ?></div><?php endif; ?>
+                                                <?php elseif ($payState === 'EN_ATTENTE'): ?>
+                                                    <span class="tv2-badge warn">Paiement en cours</span>
+                                                <?php else: ?>
+                                                    <span class="tv2-badge warn">En attente de paiement</span>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <span style="color:#A5977F;">—</span>
+                                            <?php endif; ?>
+                                        </td>
+                                    <?php endif; ?>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

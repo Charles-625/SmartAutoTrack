@@ -11,16 +11,27 @@ require_once 'includes/helpers.php';
  * Lecture seule. Filtres GET : `categorie`, `garage`, `role_acteur`,
  * `date_from`, `date_to` ; au plus 300 entrées affichées.
  * Colonne « Contexte » : un rapport de fin d'intervention (description
- * multi-lignes, activity_log_is_report()) s'affiche replié sous « Voir le
- * rapport ».
+ * multi-lignes, activity_log_is_report()) n'est plus déplié dans la colonne
+ * étroite : le bouton « Voir le rapport » (report-modal-trigger, données de
+ * activity_log_report_json()) l'ouvre dans la fenêtre commune construite par
+ * assets/js/main.js, avec un lien « Télécharger en PDF » vers
+ * ajax/download_report.php.
  *
  * Tables lues : journal d'activité (via activity_log_fetch), garage.
  * Liens : includes/activity_log.php.
+ * Ouverture de la page : activity_log_mark_seen(..., 'journal') remet à zéro
+ * la pastille rouge de nouveautés de cet onglet dans la sidebar (table
+ * onglet_vu, includes/activity_log.php).
  */
 requireRole('admin');
 
 $db = new Database();
 $conn = $db->getConnection();
+
+// Onglet « Journal d'activité » ouvert : sa pastille rouge de nouveautés
+// disparaît, avant le rendu de la sidebar (sans effet tant que la
+// migration onglet_vu n'est pas appliquée).
+activity_log_mark_seen($conn, (int)$_SESSION['user_id'], 'journal');
 
 // Vision globale : activity_log_fetch() n'applique aucune restriction pour
 // le rôle admin (voir includes/activity_log.php). Les filtres ci-dessous ne
@@ -128,7 +139,7 @@ include '../includes/header.php';
                                             <span style="color:#8B90B3;">—</span>
                                         <?php endif; ?>
                                     </td>
-                                    <td style="max-width:260px;"><?php if (activity_log_is_report($j)): ?><details style="margin-top:6px;"><summary style="cursor:pointer; font-size:12.5px; font-weight:700;">Voir le rapport</summary><div style="white-space:pre-line; font-size:13px; line-height:1.55; margin-top:6px; padding:10px 12px; border-radius:10px; background:#F1F2F8;"><?php echo h($j['description']); ?></div></details><?php elseif ($j['description']): ?><?php echo h($j['description']); ?><?php else: ?><span style="color:#8B90B3;">—</span><?php endif; ?></td>
+                                    <td style="max-width:260px;"><?php if (activity_log_is_report($j)): ?><button type="button" class="report-modal-trigger" data-report="<?php echo h(activity_log_report_json($j)); ?>">Voir le rapport</button><?php elseif ($j['description']): ?><?php echo h($j['description']); ?><?php else: ?><span style="color:#8B90B3;">—</span><?php endif; ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

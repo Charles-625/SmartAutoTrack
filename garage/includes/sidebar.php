@@ -10,6 +10,13 @@
  *                    'messages'|'profil'|'parametres'
  *   $pendingBadge   (int, optionnel) nombre de demandes non affectées à afficher en badge
  *   $garageNom      (string, optionnel) nom du garage pour la carte utilisateur
+ * Pastilles rouges de nouveautés (onglets
+ * « Journal d'activité » et « Interventions ») :
+ * activity_log_sidebar_counts() / activity_log_unread_badge()
+ * (includes/activity_log.php), même cloisonnement que le journal du rôle,
+ * hors actions du visiteur ; elles disparaissent à l'ouverture de l'onglet
+ * (activity_log_mark_seen()). Sans $conn, ou tant que la migration
+ * onglet_vu n'est pas appliquée, aucune pastille.
  */
 $activeNav = $activeNav ?? 'dashboard';
 $pendingBadge = $pendingBadge ?? 0;
@@ -18,6 +25,9 @@ $prenomInitial = mb_substr((string)($_SESSION['prenom'] ?? ''), 0, 1);
 $nomInitial = mb_substr((string)($_SESSION['nom'] ?? ''), 0, 1);
 $initials = mb_strtoupper($prenomInitial . $nomInitial) ?: '?';
 $navActive = function (string $key) use ($activeNav) { return $activeNav === $key ? 'active' : ''; };
+// Pastilles de nouveautés (Journal, Interventions) : jamais d'erreur fatale, 0
+// partout sans $conn ou sans la table onglet_vu.
+$sidebarUnread = activity_log_sidebar_counts($conn ?? null, ROLE_GARAGE, (int)($_SESSION['user_id'] ?? 0));
 ?>
 <aside class="gv2-sidebar">
     <div class="gv2-sidebar-logo">
@@ -40,6 +50,7 @@ $navActive = function (string $key) use ($activeNav) { return $activeNav === $ke
         <a href="<?php echo SITE_URL; ?>garage/interventions.php" class="gv2-navitem <?php echo $navActive('interventions'); ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#DCEEEC" stroke-width="1.8"/><path d="M8 8H16M8 12H16M8 16H12" stroke="#DCEEEC" stroke-width="1.8" stroke-linecap="round"/></svg>
             <span class="label">Interventions</span>
+            <?php echo activity_log_unread_badge($sidebarUnread['interventions']); ?>
         </a>
         <a href="<?php echo SITE_URL; ?>garage/techniciens.php" class="gv2-navitem <?php echo $navActive('techniciens'); ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="#DCEEEC" stroke-width="1.8"/><path d="M3.5 20C4.6 16.3 6.9 15 9 15C11.1 15 13.4 16.3 14.5 20" stroke="#DCEEEC" stroke-width="1.8" stroke-linecap="round"/><circle cx="17" cy="9" r="2.4" stroke="#DCEEEC" stroke-width="1.6"/><path d="M15 20C15.6 17.3 17 16.3 18.5 16.3C19.6 16.3 20.7 16.9 21.3 18.2" stroke="#DCEEEC" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -60,6 +71,7 @@ $navActive = function (string $key) use ($activeNav) { return $activeNav === $ke
         <a href="<?php echo SITE_URL; ?>garage/journal.php" class="gv2-navitem <?php echo $navActive('journal'); ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#DCEEEC" stroke-width="1.8"/><path d="M8 7.5H16M8 11.5H16M8 15.5H13" stroke="#DCEEEC" stroke-width="1.6" stroke-linecap="round"/></svg>
             <span class="label">Journal d'activité</span>
+            <?php echo activity_log_unread_badge($sidebarUnread['journal']); ?>
         </a>
         <a href="<?php echo SITE_URL; ?>messages/index.php" class="gv2-navitem <?php echo $navActive('messages'); ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="#DCEEEC" stroke-width="1.8"/><path d="M3 6.5L12 13L21 6.5" stroke="#DCEEEC" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>

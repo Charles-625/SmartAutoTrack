@@ -9,8 +9,12 @@
   * Contenu : jeton CSRF ajouté aux requêtes AJAX jQuery, objet global
   * window.SmartAutoTrack (utilitaires, notifications, messages, fenêtre
   * modale, toasts, formulaires, tableaux), gestion commune des erreurs AJAX,
-  * menu mobile des tableaux de bord, règles de mot de passe affichées en
-  * direct et filtres de saisie (data-only).
+  * menu mobile des tableaux de bord (point rouge sur le bouton si la
+  * sidebar porte une pastille de nouveautés .nav-unread), règles de mot de
+  * passe affichées en direct, filtres de saisie (data-only) et fenêtre « Voir le rapport » des
+  * journaux d'activité (boutons .report-modal-trigger, styles .report-modal
+  * dans assets/css/style.css ; bouton « Payer cette réparation » pour le
+  * client propriétaire).
  */
 
 /**
@@ -655,7 +659,8 @@ $(document).ajaxError(function(event, xhr, settings, thrownError) {
 // (position: fixed, masquée hors écran) : ce script détecte le préfixe
 // présent sur la page, injecte le bouton hamburger + le rideau, et gère
 // l'ouverture/fermeture — une seule fois pour les 4 espaces, sans toucher
-// aux ~55 pages qui utilisent ce gabarit.
+// aux ~55 pages qui utilisent ce gabarit. Si la sidebar porte une pastille
+// de nouveautés (.nav-unread), le bouton affiche un point rouge.
 // ============================================================
 $(function () {
     var prefix = ['v2', 'av2', 'gv2', 'tv2'].find(function (p) {
@@ -679,6 +684,15 @@ $(function () {
     toggle.setAttribute('aria-expanded', 'false');
     toggle.innerHTML = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M3 6H21M3 12H21M3 18H21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
     main.insertBefore(toggle, main.firstChild);
+
+    // Pastilles rouges de nouveautés (.nav-unread, onglets Journal et
+    // Interventions) invisibles tant que le tiroir est fermé : point rouge
+    // sur le bouton (.nav-toggle-unread, assets/css/style.css) et libellé
+    // accessible complété.
+    if (sidebar.querySelector('.nav-unread')) {
+        toggle.classList.add('nav-toggle-unread');
+        toggle.setAttribute('aria-label', 'Ouvrir le menu (nouveautés)');
+    }
 
     /** Ferme le tiroir de navigation et rétablit le défilement de la page. */
     function closeNav() {
@@ -794,5 +808,200 @@ document.addEventListener('DOMContentLoaded', function () {
         const blocked = ['e', 'E', '+', '-'];
         if (input.dataset.only === 'digits') blocked.push('.', ',');
         if (blocked.indexOf(e.key) !== -1) e.preventDefault();
+    });
+})();
+
+// Fenêtre « Voir le rapport » des journaux d'activité (client, technicien,
+// garage, admin). Chaque bouton .report-modal-trigger porte dans data-report
+// le JSON de activity_log_report_json() (includes/activity_log.php) :
+// { meta: [{label, value}], fields: [{label, value}], pdf: url|null,
+//   pay: url|null }. pay (bouton « Payer cette réparation ») n'est fourni
+// qu'au client propriétaire d'une réparation à payer ; null ailleurs.
+// Une seule fenêtre par page, créée au premier clic. Tout le texte est posé
+// avec textContent (jamais innerHTML) : les valeurs saisies ne sont jamais
+// interprétées comme du HTML.
+(function () {
+    let overlay = null;
+    let opener = null;
+
+    /**
+     * Crée un élément avec une classe et, éventuellement, un texte.
+     * @param {string} tag
+     * @param {string} className
+     * @param {string} [text] posé avec textContent.
+     * @returns {HTMLElement}
+     */
+    function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+    }
+
+    /**
+     * Remplit un <dl> avec des paires libellé/valeur. Une paire sans
+     * libellé occupe toute la largeur.
+     * @param {HTMLElement} dl
+     * @param {Array<{label: string, value: string}>} pairs
+     */
+    function fillPairs(dl, pairs) {
+        while (dl.firstChild) dl.removeChild(dl.firstChild);
+        (Array.isArray(pairs) ? pairs : []).forEach(function (pair) {
+            const row = el('div', 'report-modal-row');
+            const label = String(pair && pair.label != null ? pair.label : '');
+            if (label !== '') row.appendChild(el('dt', '', label));
+            else row.classList.add('report-modal-row-full');
+            row.appendChild(el('dd', '', String(pair && pair.value != null ? pair.value : '')));
+            dl.appendChild(row);
+        });
+    }
+
+    /**
+     * Construit la fenêtre (une fois) : en-tête, informations de
+     * l'intervention, tableau du rapport, boutons Payer, PDF et Fermer.
+     * @returns {HTMLElement} Le fond (.report-modal-overlay).
+     */
+    function build() {
+        overlay = el('div', 'report-modal-overlay');
+        overlay.hidden = true;
+
+        const dialog = el('div', 'report-modal');
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        dialog.setAttribute('aria-labelledby', 'report-modal-title');
+        dialog.tabIndex = -1;
+
+        const head = el('div', 'report-modal-head');
+        const title = el('h2', 'report-modal-title', 'Rapport de fin d’intervention');
+        title.id = 'report-modal-title';
+        const closeX = el('button', 'report-modal-x', '×');
+        closeX.type = 'button';
+        closeX.setAttribute('aria-label', 'Fermer');
+        head.appendChild(title);
+        head.appendChild(closeX);
+
+        const body = el('div', 'report-modal-body');
+        const meta = el('dl', 'report-modal-meta');
+        const fields = el('dl', 'report-modal-fields');
+        const empty = el('p', 'report-modal-empty', 'Le rapport ne contient aucune information.');
+        body.appendChild(meta);
+        body.appendChild(fields);
+        body.appendChild(empty);
+
+        const foot = el('div', 'report-modal-foot');
+        const pay = el('a', 'report-modal-btn report-modal-btn-pay', 'Payer cette réparation');
+        pay.hidden = true;
+        const pdf = el('a', 'report-modal-btn report-modal-btn-primary', 'Télécharger en PDF');
+        const close = el('button', 'report-modal-btn', 'Fermer');
+        close.type = 'button';
+        foot.appendChild(pay);
+        foot.appendChild(pdf);
+        foot.appendChild(close);
+
+        dialog.appendChild(head);
+        dialog.appendChild(body);
+        dialog.appendChild(foot);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        closeX.addEventListener('click', hide);
+        close.addEventListener('click', hide);
+        // Clic hors de la fenêtre : sur le fond uniquement.
+        overlay.addEventListener('mousedown', function (e) {
+            if (e.target === overlay) hide();
+        });
+        // Sur document : Échap ferme même si le focus a quitté la fenêtre.
+        document.addEventListener('keydown', function (e) {
+            if (overlay.hidden) return;
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                hide();
+            } else if (e.key === 'Tab') {
+                // Le focus reste dans la fenêtre (aria-modal).
+                const items = Array.prototype.filter.call(
+                    dialog.querySelectorAll('a[href], button'),
+                    function (n) { return !n.hidden; }
+                );
+                if (!items.length) return;
+                const first = items[0];
+                const last = items[items.length - 1];
+                if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+                    e.preventDefault();
+                    last.focus();
+                } else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault();
+                    first.focus();
+                }
+            }
+        });
+        return overlay;
+    }
+
+    /**
+     * Pose l'URL sur un lien de la fenêtre seulement si elle pointe vers ce
+     * site ; sinon le lien est masqué.
+     * @param {HTMLAnchorElement} link
+     * @param {*} value URL reçue dans data-report (chaîne ou null).
+     */
+    function setSameSiteLink(link, value) {
+        const url = typeof value === 'string' ? value : '';
+        let sameSite = false;
+        try {
+            sameSite = url !== '' && new URL(url, window.location.href).origin === window.location.origin;
+        } catch (err) {
+            sameSite = false;
+        }
+        if (sameSite) link.setAttribute('href', url);
+        else link.removeAttribute('href');
+        link.hidden = !sameSite;
+    }
+
+    /**
+     * Ouvre la fenêtre avec les données d'un bouton.
+     * @param {HTMLElement} trigger Bouton .report-modal-trigger cliqué.
+     */
+    function show(trigger) {
+        let data;
+        try {
+            data = JSON.parse(trigger.getAttribute('data-report') || '{}') || {};
+        } catch (err) {
+            data = {};
+        }
+        if (!overlay) build();
+
+        const meta = overlay.querySelector('.report-modal-meta');
+        const fields = overlay.querySelector('.report-modal-fields');
+        fillPairs(meta, data.meta);
+        fillPairs(fields, data.fields);
+        meta.hidden = !meta.children.length;
+        fields.hidden = !fields.children.length;
+        overlay.querySelector('.report-modal-empty').hidden = !fields.hidden;
+
+        // Liens PDF et Payer seulement s'ils sont fournis, et vers ce site.
+        setSameSiteLink(overlay.querySelector('.report-modal-btn-primary'), data.pdf);
+        setSameSiteLink(overlay.querySelector('.report-modal-btn-pay'), data.pay);
+
+        opener = trigger;
+        overlay.hidden = false;
+        document.documentElement.classList.add('report-modal-open');
+        overlay.querySelector('.report-modal-body').scrollTop = 0;
+        overlay.querySelector('.report-modal').focus();
+    }
+
+    /** Ferme la fenêtre et rend le focus au bouton qui l'a ouverte. */
+    function hide() {
+        if (!overlay || overlay.hidden) return;
+        overlay.hidden = true;
+        document.documentElement.classList.remove('report-modal-open');
+        if (opener && document.contains(opener)) opener.focus();
+        opener = null;
+    }
+
+    // Délégation : couvre tous les boutons de la page, même ajoutés plus tard.
+    document.addEventListener('click', function (e) {
+        const trigger = e.target && e.target.closest ? e.target.closest('.report-modal-trigger') : null;
+        if (!trigger) return;
+        e.preventDefault();
+        show(trigger);
     });
 })();

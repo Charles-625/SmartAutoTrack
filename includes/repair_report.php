@@ -159,7 +159,8 @@ function repairReportCompose(array $data): string {
  *   5. met à jour vehicule.kilometrage et vehicule.etat ;
  *   6. passe les anomalies NOUVELLE/EN_COURS de l'intervention à TRAITEE ;
  *   7. écrit le rapport complet dans le journal (REPAIR_REPORT_ACTIVITY) ;
- *   8. notifie le client.
+ *   8. notifie le client (avec, si le coût est non nul, l'invitation à
+ *      régler par Mobile Money depuis l'onglet Réparations).
  * En cas d'exception, la transaction est annulée et l'exception relancée.
  *
  * @param PDO         $conn
@@ -237,7 +238,10 @@ function repairReportClose(PDO $conn, array $scope, array $data, int $actorId, ?
             'description' => repairReportCompose($data),
         ]);
 
-        $message = 'Le rapport de réparation pour votre véhicule est disponible' . ($garageNom !== null && $garageNom !== '' ? ' (' . $garageNom . ')' : '') . '.';
+        // Réparation facturée : le message rappelle où la régler (texte seul,
+        // les notifications n'ont pas de lien).
+        $message = 'Le rapport de réparation pour votre véhicule est disponible' . ($garageNom !== null && $garageNom !== '' ? ' (' . $garageNom . ')' : '') . '.'
+            . ((float)$data['cout'] > 0 ? " Vous pouvez la régler par Mobile Money depuis l'onglet Réparations." : '');
         $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'rapport', 'Rapport de réparation disponible', ?)")
             ->execute([$iv['idClient'], $message]);
 

@@ -41,11 +41,19 @@ require_once '../includes/anomaly_types.php';
  * v2_recommend_garages, v2_intervention_handler, v2_relative),
  * admin/interventions.php (supervision, affectation et réaffectation),
  * includes/anomaly_types.php (types et gravités d'anomalie).
+ * Ouverture de la page : activity_log_mark_seen(..., 'interventions') remet à zéro
+ * la pastille rouge de nouveautés de cet onglet dans la sidebar (table
+ * onglet_vu, includes/activity_log.php).
  */
 requireRole('client');
 
 $db = new Database();
 $conn = $db->getConnection();
+
+// Onglet « Interventions » ouvert : sa pastille rouge de nouveautés
+// disparaît, avant le rendu de la sidebar (sans effet tant que la
+// migration onglet_vu n'est pas appliquée).
+activity_log_mark_seen($conn, (int)$_SESSION['user_id'], 'interventions');
 
 // Profil du client connecté : le type (PARTICULIER/ENTREPRISE) règle les
 // libellés et la variante de la sidebar.

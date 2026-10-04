@@ -2,20 +2,30 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../includes/repair_report.php';
+require_once '../includes/pdf_lite.php';
 
 /**
- * Téléchargement du rapport d'une réparation, sous forme de fichier HTML
- * autonome (imprimable). Appelé depuis client/dashboard.php et
- * client/reparations.php.
+ * Téléchargement du rapport d'une réparation : fichier HTML autonome
+ * (imprimable) par défaut, ou PDF avec format=pdf. Appelé depuis
+ * client/dashboard.php et client/reparations.php (HTML) et depuis la fenêtre
+ * « Voir le rapport » des pages journal.php (PDF).
  *
  * Accès : tout utilisateur connecté, mais cloisonné par rôle : le client
- * pour ses véhicules, le technicien pour ses réparations, le garage pour
- * ses interventions, l'admin pour tout.
- * GET : id (identifiant de la réparation).
+ * pour ses véhicules, le technicien pour ses réparations (r.idTechnicien,
+ * technicien de garage comme technicien SmartAutoTrack INTERNE), le garage
+ * pour les réparations des interventions de son garage (i.idGarage), l'admin
+ * pour tout. Une réparation hors du périmètre répond 404, comme une
+ * réparation inexistante.
+ * GET : id (identifiant de la réparation), format (liste blanche : html,
+ * défaut, ou pdf ; toute autre valeur répond 400).
+ * PDF (generateReportPDF(), includes/pdf_lite.php) : bandeau, référence,
+ * bloc « Intervention » (motif, client, véhicule, prise en charge : garage ou
+ * SmartAutoTrack, technicien), champs renseignés du rapport, pied « Document
+ * généré le … » ; nom de fichier rapport_intervention_<id>.pdf.
  * Le kilométrage relevé et l'état du véhicule à la sortie (rapport de fin
  * d'intervention, includes/repair_report.php) sont ajoutés quand les
  * colonnes reparation.kilometrage / etatVehicule existent
- * (repairReportReady()) et sont renseignées.
+ * (repairReportReady()) et sont renseignés.
  * Tables lues : reparation, intervention, vehicule, utilisateur, garage.
  */
 requireAuth();
@@ -25,6 +35,13 @@ $reparation_id = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options'
 if (!$reparation_id) {
     http_response_code(400);
     exit('ID de réparation invalide');
+}
+
+// Format de sortie (liste blanche) : HTML historique par défaut, ou PDF.
+$format = (string)($_GET['format'] ?? 'html');
+if (!in_array($format, ['html', 'pdf'], true)) {
+    http_response_code(400);
+    exit('Format de rapport invalide');
 }
 
 try {
@@ -41,7 +58,9 @@ try {
              CASE r.statut WHEN 'EN_ATTENTE' THEN 'planifiee' WHEN 'EN_COURS' THEN 'en_cours' ELSE 'validee' END AS statut,
              v.marque, v.modele, v.immatriculation,
              ut.prenom as technicien_prenom, ut.nom as technicien_nom,
-             c.nom as client_nom, c.prenom as client_prenom";
+             c.nom as client_nom, c.prenom as client_prenom,
+             i.idIntervention AS intervention_id, i.type AS intervention_type,
+             i.dateIntervention AS intervention_date, gp.nomGarage AS garage_nom";
     // Colonnes du rapport de fin d'intervention, NULL tant que la migration n'est pas appliquée.
     $cols .= repairReportReady($conn)
         ? ", r.kilometrage AS kilometrage_releve, r.etatVehicule AS etat_vehicule"
@@ -59,6 +78,7 @@ try {
             JOIN vehicule v ON i.idVehicule = v.idVehicule
             JOIN utilisateur c ON i.idClient = c.idUtilisateur
             LEFT JOIN utilisateur ut ON r.idTechnicien = ut.idUtilisateur
+            LEFT JOIN garage gp ON gp.idGarage = i.idGarage
             WHERE r.idReparation = ? AND i.idClient = ?
         ");
         $stmt->execute([$reparation_id, $_SESSION['user_id']]);
@@ -71,6 +91,7 @@ try {
             JOIN vehicule v ON i.idVehicule = v.idVehicule
             JOIN utilisateur c ON i.idClient = c.idUtilisateur
             LEFT JOIN utilisateur ut ON r.idTechnicien = ut.idUtilisateur
+            LEFT JOIN garage gp ON gp.idGarage = i.idGarage
             WHERE r.idReparation = ? AND r.idTechnicien = ?
         ");
         $stmt->execute([$reparation_id, $_SESSION['user_id']]);
@@ -84,6 +105,7 @@ try {
             JOIN utilisateur c ON i.idClient = c.idUtilisateur
             JOIN garage g ON g.idGarage = i.idGarage
             LEFT JOIN utilisateur ut ON r.idTechnicien = ut.idUtilisateur
+            LEFT JOIN garage gp ON gp.idGarage = i.idGarage
             WHERE r.idReparation = ? AND g.idUtilisateur = ?
         ");
         $stmt->execute([$reparation_id, $_SESSION['user_id']]);
@@ -96,6 +118,7 @@ try {
             JOIN vehicule v ON i.idVehicule = v.idVehicule
             JOIN utilisateur c ON i.idClient = c.idUtilisateur
             LEFT JOIN utilisateur ut ON r.idTechnicien = ut.idUtilisateur
+            LEFT JOIN garage gp ON gp.idGarage = i.idGarage
             WHERE r.idReparation = ?
         ");
         $stmt->execute([$reparation_id]);
@@ -111,6 +134,17 @@ try {
         exit('Réparation introuvable');
     }
 
+    if ($format === 'pdf') {
+        $pdf = generateReportPDF($reparation);
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="rapport_intervention_' . $reparation_id . '.pdf"');
+        header('Content-Length: ' . strlen($pdf));
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: private, no-store');
+        echo $pdf;
+        exit;
+    }
+
     // Générer le rapport
     $html = generateReportHTML($reparation);
 
@@ -122,7 +156,7 @@ try {
 
     echo $html;
 
-} catch (Exception $e) {
+} catch (Throwable $e) {
     error_log('[SmartAutoTrack] download_report : ' . $e->getMessage());
     http_response_code(500);
     exit('Erreur lors de la génération du rapport');
@@ -294,5 +328,137 @@ function generateReportHTML($reparation) {
 </html>';
 
     return $html;
+}
+
+/**
+ * Texte en clair pour le PDF : les saisies passent par sanitize() avant
+ * stockage (entités HTML) ; le PDF n'est pas du HTML, on les décode.
+ */
+function pdfText($value): string {
+    return trim(html_entity_decode((string)($value ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+}
+
+/**
+ * Construit le PDF du rapport de fin d'intervention (includes/pdf_lite.php).
+ * Les montants et kilométrages utilisent une espace insécable comme
+ * séparateur de milliers, pour ne jamais être coupés en fin de ligne.
+ *
+ * @param array $reparation Ligne issue de la requête ci-dessus (colonnes aliasées).
+ * @return string Binaire PDF.
+ */
+function generateReportPDF(array $reparation): string {
+    $nbsp = "\u{00A0}";
+    $blue = [21, 101, 192];
+    $id = (int)$reparation['id'];
+
+    $pdf = new PdfLite();
+    $pdf->setTitle('Rapport de fin d\'intervention n° ' . $id);
+    $pdf->setFooterText('Document généré le ' . date('d/m/Y à H:i') . ' par SmartAutoTrack');
+    $pdf->addPage();
+    $left = $pdf->leftX();
+    $width = $pdf->contentWidth();
+    $right = $left + $width;
+
+    // Bandeau d'en-tête sur toute la largeur de la page.
+    $pdf->rect(0, 0, PdfLite::PAGE_WIDTH, 74, $blue);
+    $pdf->setTextColor(255, 255, 255);
+    $pdf->setFont(true, 17);
+    $pdf->text($left, 36, 'SmartAutoTrack — Rapport de fin d\'intervention');
+    $pdf->setFont(false, 10);
+    $pdf->text($left, 56, 'Suivi d\'entretien et de réparation automobile');
+
+    // Référence : n° de réparation à gauche, date de la réparation à droite.
+    $pdf->setTextColor(33, 37, 41);
+    $pdf->setFont(true, 11);
+    $pdf->text($left, 104, 'Réparation n° ' . $id);
+    $pdf->setFont(false, 10);
+    $date = !empty($reparation['created_at']) ? date('d/m/Y à H:i', strtotime($reparation['created_at'])) : '—';
+    $pdf->textRight($right, 104, 'Date de la réparation : ' . $date);
+    $pdf->line($left, 114, $right, 114, [210, 220, 235], 0.8);
+    $pdf->setY(128);
+
+    // Bloc « Intervention » : cadre de fond clair, une paire libellé / valeur par ligne.
+    $technicien = pdfText(trim(($reparation['technicien_prenom'] ?? '') . ' ' . ($reparation['technicien_nom'] ?? '')));
+    $vehicule = pdfText(trim(($reparation['marque'] ?? '') . ' ' . ($reparation['modele'] ?? '')));
+    $immat = pdfText($reparation['immatriculation'] ?? '');
+    $rows = [
+        'Motif' => pdfText($reparation['intervention_type'] ?? '') ?: 'Intervention',
+        'Client' => pdfText(trim(($reparation['client_prenom'] ?? '') . ' ' . ($reparation['client_nom'] ?? ''))),
+        'Véhicule' => $vehicule . ($immat !== '' ? ' — ' . $immat : ''),
+        'Prise en charge' => pdfText($reparation['garage_nom'] ?? '') ?: 'SmartAutoTrack',
+        'Technicien' => $technicien !== '' ? $technicien : 'Non renseigné',
+    ];
+    reportPdfSection($pdf, 'Intervention' . (!empty($reparation['intervention_id']) ? ' n° ' . (int)$reparation['intervention_id'] : ''), $blue);
+    $labelW = 120;
+    $pad = 10;
+    $lineH = 14;
+    $pdf->setFont(false, 10);
+    $wrapped = [];
+    $boxH = 2 * $pad;
+    foreach ($rows as $label => $value) {
+        $wrapped[$label] = $pdf->wrapText($value !== '' ? $value : '—', $width - $labelW - 2 * $pad);
+        $boxH += count($wrapped[$label]) * $lineH + 4;
+    }
+    $pdf->ensureSpace($boxH);
+    $top = $pdf->getY();
+    $pdf->rect($left, $top, $width, $boxH, [245, 248, 252], [210, 220, 235]);
+    $pdf->setY($top + $pad);
+    foreach ($wrapped as $label => $lines) {
+        $pdf->setFont(true, 10);
+        $pdf->setTextColor(90, 98, 110);
+        $pdf->text($left + $pad, $pdf->getY() + 8, $label);
+        $pdf->setFont(false, 10);
+        $pdf->setTextColor(33, 37, 41);
+        $pdf->writeText(implode("\n", $lines), $left + $pad + $labelW, $width - $labelW - 2 * $pad, $lineH);
+        $pdf->setY($pdf->getY() + 4);
+    }
+    $pdf->setY($top + $boxH + 22);
+
+    // Champs du rapport : seuls les champs renseignés sont affichés.
+    $duree = (float)($reparation['duree_intervention'] ?? 0);
+    $km = $reparation['kilometrage_releve'] ?? null;
+    $etat = (string)($reparation['etat_vehicule'] ?? '');
+    $fields = [
+        'Titre' => pdfText($reparation['titre'] ?? ''),
+        'Description' => pdfText($reparation['description'] ?? ''),
+        'Diagnostic' => pdfText($reparation['diagnostic'] ?? ''),
+        'Travaux effectués' => pdfText($reparation['travaux_effectues'] ?? ''),
+        'Pièces utilisées' => pdfText($reparation['pieces_utilisees'] ?? ''),
+        'Durée' => $duree > 0 ? rtrim(rtrim(number_format($duree, 2, ',', ''), '0'), ',') . $nbsp . 'h' : '',
+        'Coût' => $reparation['cout'] !== null ? number_format((float)$reparation['cout'], 0, ',', $nbsp) . $nbsp . 'XAF' : '',
+        'Kilométrage relevé' => ($km !== null && $km !== '') ? number_format((float)$km, 0, ',', $nbsp) . $nbsp . 'km' : '',
+        'État du véhicule' => REPAIR_VEHICLE_STATES[$etat] ?? '',
+        'Recommandations' => pdfText($reparation['recommandations'] ?? ''),
+    ];
+    reportPdfSection($pdf, 'Rapport de fin d\'intervention', $blue);
+    $valueX = $left + $labelW + $pad;
+    $valueW = $right - $valueX;
+    foreach ($fields as $label => $value) {
+        if ($value === '') continue;
+        // Le libellé et la première ligne de la valeur restent sur la même page.
+        $pdf->ensureSpace($lineH + 2);
+        $pdf->setFont(true, 10);
+        $pdf->setTextColor(90, 98, 110);
+        $pdf->text($left, $pdf->getY() + 8, $label);
+        $pdf->setFont(false, 10);
+        $pdf->setTextColor(33, 37, 41);
+        $pdf->writeText($value, $valueX, $valueW, $lineH);
+        $y = $pdf->getY() + 5;
+        $pdf->line($left, $y, $right, $y, [228, 233, 240], 0.5);
+        $pdf->setY($y + 8);
+    }
+
+    return $pdf->output();
+}
+
+/** Titre de section du PDF (couleur d'accent) suivi d'un filet. */
+function reportPdfSection(PdfLite $pdf, string $title, array $color): void {
+    $pdf->ensureSpace(40);
+    $y = $pdf->getY();
+    $pdf->setFont(true, 13);
+    $pdf->setTextColor($color[0], $color[1], $color[2]);
+    $pdf->text($pdf->leftX(), $y + 11, $title);
+    $pdf->line($pdf->leftX(), $y + 18, $pdf->leftX() + $pdf->contentWidth(), $y + 18, $color, 1);
+    $pdf->setY($y + 28);
 }
 ?>

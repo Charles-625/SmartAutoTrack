@@ -14,6 +14,17 @@
  * (PDO), le badge de l'item « Abonnement » indique GRATUIT ou PREMIUM
  * (clientIsPremium(), includes/subscription.php) ; sans $conn, ou tant que la
  * migration des abonnements n'est pas appliquée, il reste « GRATUIT ».
+ * Pastilles rouges de nouveautés (onglets
+ * « Journal d'activité » et « Interventions ») :
+ * activity_log_sidebar_counts() / activity_log_unread_badge()
+ * (includes/activity_log.php), même cloisonnement que le journal du rôle,
+ * hors actions du visiteur ; elles disparaissent à l'ouverture de l'onglet
+ * (activity_log_mark_seen()). Sans $conn, ou tant que la migration
+ * onglet_vu n'est pas appliquée, aucune pastille.
+ * Onglet « Interventions » : la pastille rouge (nouveautés) se place à
+ * droite du badge orange existant (interventions actives) ; les deux
+ * restent visibles, accolées (écart de 6px), le rouge et le liseré blanc
+ * distinguent la pastille (règle .nav-unread, assets/css/style.css).
  */
 require_once __DIR__ . '/../../includes/subscription.php';
 $activeNav = $activeNav ?? 'dashboard';
@@ -33,6 +44,9 @@ if (isset($conn) && $conn instanceof PDO && !empty($_SESSION['user_id'])) {
         error_log('[SmartAutoTrack] sidebar abonnement : ' . $e->getMessage());
     }
 }
+// Pastilles de nouveautés (Journal, Interventions) : jamais d'erreur fatale, 0
+// partout sans $conn ou sans la table onglet_vu.
+$sidebarUnread = activity_log_sidebar_counts($conn ?? null, ROLE_CLIENT, (int)($_SESSION['user_id'] ?? 0));
 ?>
 <aside class="v2-sidebar <?php echo $isEntreprise ? 'v2-sidebar-entreprise' : ''; ?>">
     <div class="v2-sidebar-logo">
@@ -57,6 +71,7 @@ if (isset($conn) && $conn instanceof PDO && !empty($_SESSION['user_id'])) {
             <?php if ($interventionsBadge > 0): ?>
                 <span class="v2-navbadge warning"><?php echo (int)$interventionsBadge; ?></span>
             <?php endif; ?>
+            <?php echo activity_log_unread_badge($sidebarUnread['interventions']); ?>
         </a>
         <?php if ($isEntreprise): ?>
         <a href="<?php echo SITE_URL; ?>client/anomalies.php" class="v2-navitem <?php echo $navActive('anomalies'); ?>">
@@ -71,6 +86,7 @@ if (isset($conn) && $conn instanceof PDO && !empty($_SESSION['user_id'])) {
         <a href="<?php echo SITE_URL; ?>client/journal.php" class="v2-navitem <?php echo $navActive('journal'); ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#FFFFFF" stroke-width="1.8"/><path d="M8 7.5H16M8 11.5H16M8 15.5H13" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round"/></svg>
             <span class="label">Journal d'activité</span>
+            <?php echo activity_log_unread_badge($sidebarUnread['journal']); ?>
         </a>
         <a href="<?php echo SITE_URL; ?>messages/index.php" class="v2-navitem <?php echo $navActive('messages'); ?>">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="#FFFFFF" stroke-width="1.8"/><path d="M3 6.5L12 13L21 6.5" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
