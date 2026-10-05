@@ -85,6 +85,27 @@ body.authv2 { background: var(--auth-bg); margin: 0; }
 .authv2-footer a { color: var(--auth-accent); font-weight: 700; text-decoration: none; }
 .authv2-footer a:hover { text-decoration: underline; }
 
+.authv2-field-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.authv2-field-header label { margin-bottom: 0; }
+.authv2-forgot-link { font-size: 12.5px; color: var(--auth-accent); text-decoration: none; font-weight: 600; }
+.authv2-forgot-link:hover { text-decoration: underline; color: var(--auth-accent-dark); }
+
+/* Séparateur */
+.authv2-divider { display: flex; align-items: center; text-align: center; margin: 20px 0; }
+.authv2-divider::before, .authv2-divider::after { content: ''; flex: 1; border-bottom: 1px solid var(--auth-border); }
+.authv2-divider span { padding: 0 12px; color: var(--auth-text-light); font-size: 12.5px; text-transform: uppercase; font-weight: 600; }
+
+/* Bouton Google OAuth */
+.authv2-google-btn {
+    width: 100%; padding: 11px 16px; border-radius: 11px; border: 1px solid #D1D5DB;
+    background: #FFFFFF; color: #374151; font-family: inherit; font-weight: 600;
+    font-size: 14.5px; cursor: pointer; transition: all 0.15s ease;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    text-decoration: none; box-sizing: border-box; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.authv2-google-btn:hover { background: #F9FAFB; border-color: #9CA3AF; color: #111827; }
+.authv2-google-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+
 @media (max-width: 480px) {
     .authv2-card { padding: 34px 24px; border-radius: 20px; }
     .authv2-logo-wrap img { width: 84px; height: 84px; }

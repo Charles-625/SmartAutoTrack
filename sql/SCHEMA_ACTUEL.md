@@ -52,12 +52,13 @@ Aucune n'existait dans le schéma initial du 23/09 :
 
 | Table | Colonnes ajoutées | Pourquoi |
 |---|---|---|
-| `utilisateur` | `dateCreation`, `themePreference`, `photoProfil` | tri par date d'inscription, thème d'interface |
+| `utilisateur` | `dateCreation`, `themePreference`, `photoProfil`, `googleId` | tri par date d'inscription, thème d'interface, liaison OAuth 2.0 |
 | `technicien` | `statutValidation`, `competences`, `experience` | validation admin, fiche technicien |
 | `vehicule` | `kilometrage`, `annee`, `dateCreation` | champs du formulaire véhicule existant |
 | `anomalie` | `type`, `niveau`, `dateResolution` | classification et affichage (faible/moyen/critique) |
 | `intervention` | `priorite` | filtre technicien |
 | `reparation` | `titre`, `diagnostic`, `travauxEffectues`, `piecesUtilisees`, `recommandations`, `dureeIntervention` | contenu du rapport de réparation |
+| `password_resets` | *(table entière)* | jetons sécurisés à usage unique pour mot de passe oublié (Brevo) |
 
 ## Pas de colonne `role`
 
