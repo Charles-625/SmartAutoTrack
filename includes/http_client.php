@@ -1,6 +1,6 @@
 <?php
 /**
- * Requête HTTP JSON sortante (CamPay, Hugging Face).
+ * Requête HTTP JSON sortante (CamPay, OpenRouter).
  *
  * @return array{status:int, data:mixed, raw:string}
  * @throws RuntimeException si le serveur distant est injoignable.

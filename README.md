@@ -50,10 +50,10 @@ Extensions PHP utilisées par le code (toutes actives par défaut dans XAMPP) :
 | Extension | Utilisée pour |
 |---|---|
 | `pdo_mysql` | toute la base de données (`config/database.php`) |
-| `curl` | appels HTTP à CamPay et Hugging Face (`includes/http_client.php`) |
+| `curl` | appels HTTP à CamPay et OpenRouter (`includes/http_client.php`) |
 | `fileinfo` | vérification du type MIME réel des fichiers envoyés (`auth/register.php`, `garage/parametres.php`, `ajax/download_*.php`) |
 | `mbstring` | longueur des mots de passe, découpe des textes (`includes/password_policy.php`, `includes/payments.php`, pages admin) |
-| `openssl` | HTTPS vers CamPay et Hugging Face |
+| `openssl` | HTTPS vers CamPay et OpenRouter |
 | `json` | réponses AJAX, webhook (intégrée à PHP 8) |
 
 Le front utilise jQuery et du JavaScript maison (`assets/js/main.js`, `themes.js`, `assistant.js`). Il n'y a aucune étape de compilation.
@@ -90,7 +90,7 @@ HCH/
 │   ├── header.php, footer.php
 │   ├── payments.php        Logique métier du paiement (table paiement)
 │   ├── campay.php          Client de l'API CamPay
-│   ├── ai.php              Assistant IA (Hugging Face)
+│   ├── ai.php              Assistant IA (OpenRouter)
 │   ├── http_client.php     Petit client HTTP JSON (cURL)
 │   ├── login_throttle.php  Limitation des tentatives de connexion
 │   ├── activity_log.php    Journal d'activité (table journalactivites)
@@ -244,9 +244,9 @@ CamPay est considéré comme configuré si `CAMPAY_SIMULATION` est vrai, ou si `
 
 | Clé | Rôle | Défaut |
 |---|---|---|
-| `HF_TOKEN` | Jeton Hugging Face avec la permission « Make calls to Inference Providers ». Sans jeton, l'assistant s'affiche comme indisponible | *(vide)* |
-| `HF_MODEL` | Modèle utilisé | `Qwen/Qwen2.5-7B-Instruct:fastest` |
-| `HF_API_URL` | Point d'accès, compatible OpenAI | `https://router.huggingface.co/v1/chat/completions` |
+| `OPENROUTER_API_KEY` | Clé OpenRouter (`sk-or-v1-...`, créée sur https://openrouter.ai/keys). Sans clé, l'assistant s'affiche comme indisponible | *(vide)* |
+| `OPENROUTER_MODEL` | Modèle utilisé (identifiant de https://openrouter.ai/models ; suffixe `:free` = gratuit) | `meta-llama/llama-3.3-70b-instruct:free` |
+| `OPENROUTER_API_URL` | Point d'accès, compatible OpenAI | `https://openrouter.ai/api/v1/chat/completions` |
 
 ### Divers
 
@@ -346,7 +346,7 @@ Pages `client/assistant.php` et `admin/assistant.php`, appelées par `ajax/assis
 - **Affichage** : `h()` échappe toute sortie HTML. Requêtes SQL préparées.
 - **En-têtes et fichiers techniques** (`.htaccess` racine) : `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, pas de cache sur les pages PHP. Les `.sql`, `.md`, `.lock`, `.phar`, `composer.json`, `composer-setup.php`, `phpunit.xml`, `.gitignore` et `tmp_*.txt` ne sont pas servis. `config/` et `scripts/` sont entièrement interdits au web, et les scripts refusent aussi une exécution hors CLI (sauf les quatre `migrate_*` ponctuels, protégés uniquement par le `.htaccess`).
 - **Erreurs** : jamais affichées au visiteur, sauf avec `HCH_DEBUG=1`.
-- **Secrets** : les identifiants de base, clés CamPay et jeton Hugging Face se mettent dans `config/local.php` (ignoré par Git) ou dans des variables d'environnement, **jamais dans le code**.
+- **Secrets** : les identifiants de base, clés CamPay et clé OpenRouter se mettent dans `config/local.php` (ignoré par Git) ou dans des variables d'environnement, **jamais dans le code**.
 
 ### Points d'attention connus
 
@@ -392,7 +392,8 @@ Sans Composer global, utilisez `php composer.phar test`, ou lancez `php vendor/b
 | Technicien ou garage ne peut pas se connecter | Son statut n'est pas `VALIDE`. Validez-le (ou réactivez-le) depuis l'espace administrateur. Un garage peut aussi réactiver un technicien de son équipe qu'il a suspendu. |
 | Bouton de paiement absent | La réparation n'est pas `TERMINEE`, son coût vaut 0, ou la table `paiement` n'est pas prête (`migrate_structure.php --apply`). |
 | Paiement refusé en démo | Vérifiez `CAMPAY_DEMO_MAX_AMOUNT` (25 ou moins) et les identifiants CamPay. Pour travailler hors ligne, utilisez `CAMPAY_SIMULATION=true`. |
-| Assistant « indisponible » | `HF_TOKEN` est absent, ou le jeton n'a pas la permission Inference Providers (un jeton en lecture seule est refusé). |
+| Assistant « indisponible » | `OPENROUTER_API_KEY` est absente ou invalide, le compte n'a plus de crédits (HTTP 402) ou le modèle choisi n'existe plus. Le détail exact s'affiche à l'administrateur dans le chat. |
+| Google : « Erreur 400 : redirect_uri_mismatch » | L'URL de retour envoyée à Google n'est pas déclarée dans Google Cloud Console (Identifiants → client OAuth → « URI de redirection autorisés »). Ajoutez-y exactement `SITE_URL` + `auth/google_callback.php` (ex. `http://localhost/HCH/auth/google_callback.php`), même schéma, même hôte (`localhost` ≠ `127.0.0.1`), même port, même dossier. Ou fixez-la avec `GOOGLE_REDIRECT_URI`. |
 | Envoi de documents en échec | Seuls PDF, JPG et PNG de 5 Mo au plus sont acceptés. Vérifiez que `uploads/` est accessible en écriture et que `upload_max_filesize` et `post_max_size` sont suffisants dans `php.ini`. |
 | Un changement de CSS ou JS ne s'affiche pas | Rechargement forcé (Ctrl+F5). Les fichiers statiques sont revalidés par ETag. |
 | `php` introuvable | Utilisez `C:\xampp\php\php.exe`, ou ajoutez `C:\xampp\php` au PATH. |

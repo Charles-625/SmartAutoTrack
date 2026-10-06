@@ -21,9 +21,9 @@ return [
     'CAMPAY_SIMULATION' => 'false',     // true : aucun appel à CamPay, paiements validés localement (développement)
     'CAMPAY_DEMO_MAX_AMOUNT' => '25',   // démo uniquement : montant débité plafonné (la démo refuse plus de 25 XAF), 0 = pas de plafond
 
-    // Assistant IA (Hugging Face Inference Providers)
-    'HF_TOKEN' => '',                   // jeton avec la permission « Make calls to Inference Providers »
-    'HF_MODEL' => 'Qwen/Qwen2.5-7B-Instruct:fastest',
+    // Assistant IA (OpenRouter, https://openrouter.ai)
+    'OPENROUTER_API_KEY' => '',         // clé sk-or-v1-... créée sur https://openrouter.ai/keys
+    'OPENROUTER_MODEL' => 'meta-llama/llama-3.3-70b-instruct:free', // tout identifiant de https://openrouter.ai/models
 
     // Envoi d'emails transactionnels (Brevo / Sendinblue)
     'BREVO_API_KEY' => '',              // Clé API v3 (xkeysib-...)
@@ -33,5 +33,6 @@ return [
     // Authentification Google OAuth 2.0
     'GOOGLE_CLIENT_ID' => '',           // Obtenu sur Google Cloud Console
     'GOOGLE_CLIENT_SECRET' => '',       // Obtenu sur Google Cloud Console
-    'GOOGLE_REDIRECT_URI' => '',        // Facultatif (déduit par défaut : SITE_URL/auth/google_callback.php)
+    'GOOGLE_REDIRECT_URI' => '',        // Facultatif (déduit par défaut : SITE_URL/auth/google_callback.php, ex. http://localhost/HCH/auth/google_callback.php)
+                                        // Doit figurer À L'IDENTIQUE dans « URI de redirection autorisés » sur Google Cloud Console
 ];

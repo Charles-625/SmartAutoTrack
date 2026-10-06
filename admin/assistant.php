@@ -13,7 +13,7 @@ require_once '../includes/ai.php';
  * suggérées, puis assets/js/assistant.js envoie les messages en AJAX
  * (historique initial injecté via aiHistory(ROLE_ADMIN)).
  *
- * Si l'IA n'est pas configurée (HF_TOKEN absent de config/local.php), la page
+ * Si l'IA n'est pas configurée (OPENROUTER_API_KEY absent de config/local.php), la page
  * affiche seulement une consigne de configuration.
  * Liens : includes/ai.php, assets/js/assistant.js, assets/css/assistant.css.
  */
@@ -77,7 +77,7 @@ include '../includes/header.php';
                 </div>
             <?php else: ?>
                 <p style="margin:16px 0 0; font-size:13px; color:rgba(255,255,255,0.75);">
-                    Renseignez <code>HF_TOKEN</code> (et éventuellement <code>HF_MODEL</code>) dans <code>config/local.php</code> pour activer l'assistant.
+                    Renseignez <code>OPENROUTER_API_KEY</code> (et éventuellement <code>OPENROUTER_MODEL</code>) dans <code>config/local.php</code> pour activer l'assistant.
                 </p>
             <?php endif; ?>
         </div>
