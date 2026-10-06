@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="SmartAutoTrack"><defs><linearGradient id="mtile" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#14305A"/><stop offset="1" stop-color="#0B1B33"/></linearGradient>
+<linearGradient id="mpin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4FB0FF"/><stop offset="1" stop-color="#1668D6"/></linearGradient></defs><rect width="512" height="512" rx="116" fill="url(#mtile)"/>
+<path d="M256 444C196 372 112 306 112 216A144 144 0 1 1 400 216C400 306 316 372 256 444Z" fill="url(#mpin)"/>
+<circle cx="256" cy="216" r="96" fill="#0B1B33"/>
+<path d="M206.5 265.5A70 70 0 1 1 305.5 265.5" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="14" stroke-linecap="round"/>
+<path d="M206.5 265.5A70 70 0 0 1 291 155.4" fill="none" stroke="#5CC8FF" stroke-width="14" stroke-linecap="round"/>
+<line x1="256" y1="216" x2="284" y2="168" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"/>
+<circle cx="256" cy="216" r="15" fill="#FFFFFF"/><circle cx="256" cy="216" r="6" fill="#0B1B33"/></svg>
