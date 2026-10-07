@@ -66,7 +66,7 @@ include '../includes/header.php';
 
         <div class="v2-ai-card ai-chat" id="aiChat" style="max-width: 720px;">
             <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2L14 9L21 11L14 13L12 20L10 13L3 11L10 9Z" fill="#8DE0FF"/></svg>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2L14 9L21 11L14 13L12 20L10 13L3 11L10 9Z" fill="#FFFFFF"/></svg>
                 <h2 style="font-size:17px;">Comment puis-je vous aider ?</h2>
             </div>
             <p>Posez vos questions sur l'entretien de vos véhicules, vos anomalies, vos démarches et votre compte SmartAutoTrack. L'assistant connaît vos véhicules et leur historique ; il oriente et informe, mais ne remplace pas le diagnostic d'un technicien.</p>
@@ -87,7 +87,7 @@ include '../includes/header.php';
                     </button>
                 </form>
                 <?php if ($aiRemaining !== null): ?>
-                    <p class="v2-ai-foot" style="margin-top:10px;">Formule gratuite : <strong id="aiRemaining"><?php echo (int)$aiRemaining; ?></strong> message(s) restant(s) aujourd'hui sur <?php echo (int)SUB_FREE_AI_PER_DAY; ?>. <a href="abonnement.php" style="color:#8DE0FF; font-weight:600;">Premium : assistant illimité</a></p>
+                    <p class="v2-ai-foot" style="margin-top:10px;">Formule gratuite : <strong id="aiRemaining"><?php echo (int)$aiRemaining; ?></strong> message(s) restant(s) aujourd'hui sur <?php echo (int)SUB_FREE_AI_PER_DAY; ?>. <a href="abonnement.php" style="color:#FFFFFF; font-weight:600;">Premium : assistant illimité</a></p>
                 <?php endif; ?>
                 <div class="ai-chat-toolbar">
                     <button type="button" class="ai-chat-reset" id="aiChatReset">Nouvelle conversation</button>
@@ -98,14 +98,14 @@ include '../includes/header.php';
                 </div>
             <?php endif; ?>
 
-            <p class="v2-ai-foot">Pour une question sur votre dossier, notre <a href="sav.php" style="color:#8DE0FF; font-weight:600;">SAV</a> répond directement via la messagerie.</p>
+            <p class="v2-ai-foot">Pour une question sur votre dossier, notre <a href="sav.php" style="color:#FFFFFF; font-weight:600;">SAV</a> répond directement via la messagerie.</p>
         </div>
     </main>
 </div>
 
 <?php if ($aiEnabled): ?>
 <script>window.AI_HISTORY = <?php echo json_encode(aiHistory(ROLE_CLIENT), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;</script>
-<script src="<?php echo SITE_URL; ?>assets/js/assistant.js"></script>
+<script src="<?php echo h(asset_url('assets/js/assistant.js')); ?>"></script>
 <?php endif; ?>
 
 <?php include '../includes/footer.php'; ?>

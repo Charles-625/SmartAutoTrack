@@ -234,7 +234,7 @@ include '../includes/header.php';
 <!-- Statistiques -->
 <div class="v2-stats">
     <div class="v2-card v2-stat-card">
-        <div class="v2-stat-icon" style="background:#EEF1FF;"><i class="fas fa-list" style="color:#3956E8;"></i></div>
+        <div class="v2-stat-icon" style="background:#F3F5FE;"><i class="fas fa-list" style="color:#3956E8;"></i></div>
         <div>
             <div class="v2-stat-value"><?php echo (int)$stats['total']; ?></div>
             <div class="v2-stat-label">Total réparations</div>
@@ -255,7 +255,7 @@ include '../includes/header.php';
         </div>
     </div>
     <div class="v2-card v2-stat-card">
-        <div class="v2-stat-icon" style="background:#EEF1FF;"><i class="fas fa-check-double" style="color:#3956E8;"></i></div>
+        <div class="v2-stat-icon" style="background:#F3F5FE;"><i class="fas fa-check-double" style="color:#3956E8;"></i></div>
         <div>
             <div class="v2-stat-value"><?php echo (int)$stats['validees']; ?></div>
             <div class="v2-stat-label">Validées</div>

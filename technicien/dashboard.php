@@ -80,8 +80,8 @@ $repartition = $stmt->fetch();
 $donutSegments = [
     ['label' => 'À démarrer', 'value' => (int)($repartition['a_demarrer'] ?? 0), 'color' => '#1E7DBF'],
     ['label' => 'En cours', 'value' => (int)($repartition['en_cours'] ?? 0), 'color' => '#C8871A'],
-    ['label' => 'Terminées', 'value' => (int)($repartition['terminee'] ?? 0), 'color' => '#1E8A5A'],
-    ['label' => 'Annulées', 'value' => (int)($repartition['annulee'] ?? 0), 'color' => '#A5977F'],
+    ['label' => 'Terminées', 'value' => (int)($repartition['terminee'] ?? 0), 'color' => '#1E8A4C'],
+    ['label' => 'Annulées', 'value' => (int)($repartition['annulee'] ?? 0), 'color' => '#8B90B3'],
 ];
 $donutTotal = array_sum(array_column($donutSegments, 'value'));
 
@@ -152,7 +152,7 @@ include '../includes/header.php';
             <div class="tv2-topbar-actions">
                 <div class="tv2-notif-wrap">
                     <button class="tv2-iconbtn" id="notificationBtn" aria-label="Notifications" type="button">
-                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M6 10C6 6.7 8.7 4 12 4C15.3 4 18 6.7 18 10V14L20 17H4L6 14V10Z" stroke="#2B2116" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 20C10.4 20.8 11.1 21.3 12 21.3C12.9 21.3 13.6 20.8 14 20" stroke="#2B2116" stroke-width="1.8" stroke-linecap="round"/></svg>
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M6 10C6 6.7 8.7 4 12 4C15.3 4 18 6.7 18 10V14L20 17H4L6 14V10Z" stroke="#171B33" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 20C10.4 20.8 11.1 21.3 12 21.3C12.9 21.3 13.6 20.8 14 20" stroke="#171B33" stroke-width="1.8" stroke-linecap="round"/></svg>
                         <span class="tv2-notif-dot" id="notificationCounter"></span>
                     </button>
                     <div class="tv2-notif-panel" id="notificationPanel">
@@ -188,8 +188,8 @@ include '../includes/header.php';
                 </div>
             </div>
             <div class="tv2-card tv2-stat-card">
-                <div class="tv2-stat-icon" style="background:#E4F7EE;">
-                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M14.5 4.5L19.5 9.5L9 20H4V15L14.5 4.5Z" stroke="#1E8A5A" stroke-width="1.7" stroke-linejoin="round"/><path d="M12.5 6.5L17.5 11.5" stroke="#1E8A5A" stroke-width="1.7"/></svg>
+                <div class="tv2-stat-icon" style="background:#E9F6EE;">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M14.5 4.5L19.5 9.5L9 20H4V15L14.5 4.5Z" stroke="#1E8A4C" stroke-width="1.7" stroke-linejoin="round"/><path d="M12.5 6.5L17.5 11.5" stroke="#1E8A4C" stroke-width="1.7"/></svg>
                 </div>
                 <div>
                     <div class="tv2-stat-value"><?php echo (int)$reparationsCeMois; ?></div>
@@ -216,7 +216,7 @@ include '../includes/header.php';
                 <?php else: ?>
                     <?php echo tv2_trend_svg($trendValues, 560, 110); ?>
                     <div style="display:flex; justify-content:space-between; margin-top:6px;">
-                        <?php foreach ($trendLabels as $l): ?><span style="font-size:11px; color:#A5977F;"><?php echo h($l); ?></span><?php endforeach; ?>
+                        <?php foreach ($trendLabels as $l): ?><span style="font-size:11px; color:#8B90B3;"><?php echo h($l); ?></span><?php endforeach; ?>
                     </div>
                 <?php endif; ?>
             </div>
@@ -290,7 +290,7 @@ include '../includes/header.php';
                             <?php foreach ($journalRecent as $j): ?>
                                 <div>
                                     <div style="font-size:13.5px; font-weight:600;"><?php echo h(tv2_phrase($j, $selfId)); ?></div>
-                                    <div style="font-size:11.5px; color:#A5977F; margin-top:2px;"><?php echo h(v2_relative($j['dateHeure'], $dbNow)); ?></div>
+                                    <div style="font-size:11.5px; color:#8B90B3; margin-top:2px;"><?php echo h(v2_relative($j['dateHeure'], $dbNow)); ?></div>
                                 </div>
                             <?php endforeach; ?>
                         </div>
@@ -300,10 +300,10 @@ include '../includes/header.php';
                 <!-- Messages -->
                 <div class="tv2-card tv2-panel-sm">
                     <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="#2B2116" stroke-width="1.8"/><path d="M3 6.5L12 13L21 6.5" stroke="#2B2116" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="#171B33" stroke-width="1.8"/><path d="M3 6.5L12 13L21 6.5" stroke="#171B33" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                         <h2 style="margin:0; font-family:'Sora', sans-serif; font-size:15px; font-weight:700;">Messages</h2>
                     </div>
-                    <p style="margin:0 0 14px; font-size:13px; line-height:1.5; color:#7A6A57;"><?php echo (int)$messagesNonLus; ?> message<?php echo $messagesNonLus > 1 ? 's' : ''; ?> non lu<?php echo $messagesNonLus > 1 ? 's' : ''; ?>.</p>
+                    <p style="margin:0 0 14px; font-size:13px; line-height:1.5; color:#666C8E;"><?php echo (int)$messagesNonLus; ?> message<?php echo $messagesNonLus > 1 ? 's' : ''; ?> non lu<?php echo $messagesNonLus > 1 ? 's' : ''; ?>.</p>
                     <a href="<?php echo SITE_URL; ?>messages/index.php" class="tv2-btn-dark" style="display:block; text-align:center; box-sizing:border-box; text-decoration:none;">Ouvrir la messagerie</a>
                 </div>
             </div>

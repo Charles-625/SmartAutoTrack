@@ -198,7 +198,7 @@ include '../includes/header.php';
             <div class="v2-topbar-actions">
                 <div class="v2-notif-wrap">
                     <button class="v2-iconbtn" id="notificationBtn" aria-label="Notifications" type="button">
-                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M6 10C6 6.7 8.7 4 12 4C15.3 4 18 6.7 18 10V14L20 17H4L6 14V10Z" stroke="#3A3F63" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 20C10.4 20.8 11.1 21.3 12 21.3C12.9 21.3 13.6 20.8 14 20" stroke="#3A3F63" stroke-width="1.8" stroke-linecap="round"/></svg>
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M6 10C6 6.7 8.7 4 12 4C15.3 4 18 6.7 18 10V14L20 17H4L6 14V10Z" stroke="#171B33" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 20C10.4 20.8 11.1 21.3 12 21.3C12.9 21.3 13.6 20.8 14 20" stroke="#171B33" stroke-width="1.8" stroke-linecap="round"/></svg>
                         <span class="v2-notif-dot" id="notificationCounter"></span>
                     </button>
                     <div class="v2-notif-panel" id="notificationPanel">
@@ -216,7 +216,7 @@ include '../includes/header.php';
         <!-- Stat cards -->
         <div class="v2-stats">
             <div class="v2-card v2-stat-card">
-                <div class="v2-stat-icon" style="background:<?php echo $isEntreprise ? '#EAEFFC' : '#EEF1FF'; ?>;">
+                <div class="v2-stat-icon" style="background:<?php echo $isEntreprise ? '#F3F5FE' : '#F3F5FE'; ?>;">
                     <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><rect x="2" y="10" width="20" height="8" rx="3" stroke="<?php echo $isEntreprise ? '#2540C4' : '#3956E8'; ?>" stroke-width="1.8"/><circle cx="7.5" cy="18.5" r="1.6" stroke="<?php echo $isEntreprise ? '#2540C4' : '#3956E8'; ?>" stroke-width="1.8"/><circle cx="16.5" cy="18.5" r="1.6" stroke="<?php echo $isEntreprise ? '#2540C4' : '#3956E8'; ?>" stroke-width="1.8"/><path d="M5 10L7 5.5H17L19 10" stroke="<?php echo $isEntreprise ? '#2540C4' : '#3956E8'; ?>" stroke-width="1.8" stroke-linejoin="round"/></svg>
                 </div>
                 <div>
@@ -326,7 +326,7 @@ include '../includes/header.php';
                             ?>
                                 <div class="v2-vehicle-card <?php echo $hasAnomaly ? 'has-anomaly' : ''; ?>">
                                     <div class="v2-vehicle-top">
-                                        <div class="v2-vehicle-icon" style="background:<?php echo $hasAnomaly ? '#FDEDEE' : '#EEF1FF'; ?>;">
+                                        <div class="v2-vehicle-icon" style="background:<?php echo $hasAnomaly ? '#FDEDEE' : '#F3F5FE'; ?>;">
                                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="2" y="10" width="20" height="8" rx="3" stroke="<?php echo $hasAnomaly ? '#E5484D' : '#3956E8'; ?>" stroke-width="1.6"/><circle cx="7.5" cy="18.5" r="1.5" stroke="<?php echo $hasAnomaly ? '#E5484D' : '#3956E8'; ?>" stroke-width="1.6"/><circle cx="16.5" cy="18.5" r="1.5" stroke="<?php echo $hasAnomaly ? '#E5484D' : '#3956E8'; ?>" stroke-width="1.6"/><path d="M5 10L7 5.5H17L19 10" stroke="<?php echo $hasAnomaly ? '#E5484D' : '#3956E8'; ?>" stroke-width="1.6" stroke-linejoin="round"/></svg>
                                         </div>
                                         <?php if ($hasAnomaly): ?>
@@ -371,7 +371,7 @@ include '../includes/header.php';
                                     $qui = v2_intervention_handler($iv);
                                     $meta = $iv['marque'] . ' ' . $iv['modele'] . ' · ' . $qui . ' · ' . date('d/m/Y', strtotime($iv['dateIntervention']));
                                 } else {
-                                    $rowClass = ''; $iconBg = '#EEF1FF'; $iconColor = '#3956E8'; $badgeClass = 'ok'; $label = 'Planifiée';
+                                    $rowClass = ''; $iconBg = '#F3F5FE'; $iconColor = '#3956E8'; $badgeClass = 'ok'; $label = 'Planifiée';
                                     $qui = v2_intervention_handler($iv);
                                     $meta = $iv['marque'] . ' ' . $iv['modele'] . ' · ' . $qui . ' · ' . date('d/m/Y', strtotime($iv['dateIntervention']));
                                 }
@@ -416,7 +416,7 @@ include '../includes/header.php';
                                         <div class="v2-history-meta"><?php echo h($h['marque'] . ' ' . $h['modele']); ?> · <?php echo h(date('d/m/Y', strtotime($h['dateReparation']))); ?> · <?php echo number_format((float)$h['cout'], 0, ',', ' '); ?> XAF</div>
                                     </div>
                                     <a href="<?php echo SITE_URL; ?>ajax/download_report.php?id=<?php echo (int)$h['id']; ?>" class="v2-download-btn" aria-label="Télécharger le rapport" title="Télécharger le rapport">
-                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 3V15M12 15L8 11M12 15L16 11" stroke="#4A4F73" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 17V19C4 20.1 4.9 21 6 21H18C19.1 21 20 20.1 20 19V17" stroke="#4A4F73" stroke-width="1.8" stroke-linecap="round"/></svg>
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 3V15M12 15L8 11M12 15L16 11" stroke="#666C8E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 17V19C4 20.1 4.9 21 6 21H18C19.1 21 20 20.1 20 19V17" stroke="#666C8E" stroke-width="1.8" stroke-linecap="round"/></svg>
                                     </a>
                                 </div>
                             <?php endforeach; ?>
@@ -431,14 +431,14 @@ include '../includes/header.php';
                 <!-- Assistant IA -->
                 <div class="v2-ai-card">
                     <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L14 9L21 11L14 13L12 20L10 13L3 11L10 9Z" fill="#8DE0FF"/></svg>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L14 9L21 11L14 13L12 20L10 13L3 11L10 9Z" fill="#FFFFFF"/></svg>
                         <h2>Assistant IA</h2>
                     </div>
                     <p><?php echo $isEntreprise
                         ? "L'assistant IA vous aide à comprendre l'entretien de votre parc, vos interventions et vos démarches."
                         : "Une question sur l'entretien, une démarche ou votre compte ? Posez-la ici."; ?></p>
                     <a href="assistant.php" class="v2-ai-input" style="text-decoration:none;">
-                        <span style="flex-grow:1; font-size:13px; color:#9AA1C4;">Ouvrir l'assistant…</span>
+                        <span style="flex-grow:1; font-size:13px; color:rgba(255,255,255,0.55);">Ouvrir l'assistant…</span>
                         <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M3 12L21 3L14 21L11 13L3 12Z" stroke="#FFFFFF" stroke-width="1.6" stroke-linejoin="round"/></svg>
                     </a>
                     <p class="v2-ai-foot">L'assistant IA oriente et informe ; il ne pose pas de diagnostic mécanique et ne remplace pas l'expertise d'un technicien. (Bientôt disponible.)</p>
@@ -456,7 +456,7 @@ include '../includes/header.php';
                         <div style="display:flex; flex-direction:column; gap:12px;">
                             <?php foreach ($notificationsApercu as $n): ?>
                                 <div class="v2-notiflist-item" style="<?php echo $n['lu'] === 'oui' ? 'opacity:0.55;' : ''; ?>">
-                                    <span class="v2-notiflist-dot" style="<?php echo $n['lu'] === 'oui' ? 'background:#C9CDE6;' : ''; ?>"></span>
+                                    <span class="v2-notiflist-dot" style="<?php echo $n['lu'] === 'oui' ? 'background:#DDE0F0;' : ''; ?>"></span>
                                     <div>
                                         <div class="v2-notiflist-title"><?php echo h($n['titre']); ?></div>
                                         <div class="v2-notiflist-time"><?php echo h(v2_relative($n['date_creation'], $dbNow)); ?></div>
@@ -482,7 +482,7 @@ include '../includes/header.php';
                     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
                         <h2 style="margin:0; font-family:'Sora', sans-serif; font-size:15px; font-weight:700;">Votre abonnement</h2>
                         <?php $dashboardPremium = clientIsPremium($conn, (int)$_SESSION['user_id']); ?>
-                        <span style="font-size:10.5px; font-weight:700; color:<?php echo $dashboardPremium ? '#1E8A4C' : '#4A4F73'; ?>; background:<?php echo $dashboardPremium ? '#E9F6EE' : '#F1F2F9'; ?>; padding:3px 9px; border-radius:20px;"><?php echo $dashboardPremium ? 'PREMIUM' : 'GRATUIT'; ?></span>
+                        <span style="font-size:10.5px; font-weight:700; color:<?php echo $dashboardPremium ? '#1E8A4C' : '#6D74A0'; ?>; background:<?php echo $dashboardPremium ? '#E9F6EE' : '#EFF0F6'; ?>; padding:3px 9px; border-radius:20px;"><?php echo $dashboardPremium ? 'PREMIUM' : 'GRATUIT'; ?></span>
                     </div>
                     <?php if ($dashboardPremium): ?>
                     <p style="margin:0 0 14px; font-size:13px; line-height:1.5; color:#666C8E;">Votre formule Premium est active : plus de véhicules, assistant IA illimité et historique complet.</p>

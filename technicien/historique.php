@@ -162,8 +162,8 @@ include '../includes/header.php';
                             <?php foreach ($anomaliesHisto as $a): $isActive = in_array($a['statut'], ['NOUVELLE', 'EN_COURS'], true); ?>
                                 <div>
                                     <div style="font-size:13px; font-weight:600;"><?php echo h($a['marque'] . ' ' . $a['modele']); ?></div>
-                                    <div style="font-size:12px; color:#7A6A57; margin:2px 0;"><?php echo h($a['type']); ?></div>
-                                    <div style="font-size:11.5px; color:#A5977F;"><?php echo h(date('d/m/Y', strtotime($a['date_event']))); ?> · <span class="tv2-badge <?php echo $isActive ? 'bad' : 'ok'; ?>"><?php echo $isActive ? 'Active' : 'Résolue'; ?></span></div>
+                                    <div style="font-size:12px; color:#666C8E; margin:2px 0;"><?php echo h($a['type']); ?></div>
+                                    <div style="font-size:11.5px; color:#8B90B3;"><?php echo h(date('d/m/Y', strtotime($a['date_event']))); ?> · <span class="tv2-badge <?php echo $isActive ? 'bad' : 'ok'; ?>"><?php echo $isActive ? 'Active' : 'Résolue'; ?></span></div>
                                 </div>
                             <?php endforeach; ?>
                         </div>

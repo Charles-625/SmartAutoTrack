@@ -91,8 +91,8 @@ $interventionsActivesCount = (int)$stmt->fetchColumn();
 
 // Couleurs de l'icône de chaque événement, selon sa catégorie.
 $icons = [
-    'intervention' => ['bg' => '#E9EAFB', 'color' => '#4B4FCE'],
-    'reparation' => ['bg' => '#E4F7EE', 'color' => '#1E8A5A'],
+    'intervention' => ['bg' => '#F3F5FE', 'color' => '#3956E8'],
+    'reparation' => ['bg' => '#E9F6EE', 'color' => '#1E8A4C'],
     'anomalie' => ['bg' => '#FDEDEE', 'color' => '#E5484D'],
 ];
 
@@ -132,7 +132,7 @@ include '../includes/header.php';
                 <div class="v2-empty">Aucune activité pour le moment. Cet historique se remplit automatiquement au fil de vos demandes d'intervention, réparations et anomalies constatées sur vos véhicules.</div>
             <?php else: ?>
                 <div class="v2-timeline">
-                    <?php foreach ($journal as $j): $icon = $icons[$j['categorie']] ?? ['bg' => '#EEF0F7', 'color' => '#5A5E7A']; ?>
+                    <?php foreach ($journal as $j): $icon = $icons[$j['categorie']] ?? ['bg' => '#EFF0F6', 'color' => '#6D74A0']; ?>
                         <div class="v2-timeline-item">
                             <div class="v2-timeline-dot" style="background:<?php echo h($icon['bg']); ?>;">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" fill="<?php echo h($icon['color']); ?>"/></svg>

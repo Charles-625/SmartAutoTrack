@@ -164,7 +164,7 @@ include '../includes/header.php';
                 </div>
             </div>
             <div class="v2-card v2-stat-card">
-                <div class="v2-stat-icon" style="background:#EAEFFC;"><i class="fas fa-list" style="color:#2540C4;"></i></div>
+                <div class="v2-stat-icon" style="background:#F3F5FE;"><i class="fas fa-list" style="color:#2540C4;"></i></div>
                 <div>
                     <div class="v2-stat-value"><?php echo (int)($counts['total'] ?? 0); ?></div>
                     <div class="v2-stat-label">Total constaté</div>

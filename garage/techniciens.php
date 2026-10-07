@@ -215,7 +215,7 @@ include '../includes/header.php';
                                             </div>
                                             <?php echo h($t['prenom'] . ' ' . $t['nom']); ?>
                                         </div>
-                                        <div style="font-size:11.5px; color:#8AA0A3; margin-top:2px;"><?php echo h($t['email']); ?></div>
+                                        <div style="font-size:11.5px; color:#8B90B3; margin-top:2px;"><?php echo h($t['email']); ?></div>
                                     </td>
                                     <td><?php echo h($t['specialite'] ?: '—'); ?></td>
                                     <td><span class="gv2-badge <?php echo h($st[1]); ?>"><?php echo h($st[0]); ?></span></td>

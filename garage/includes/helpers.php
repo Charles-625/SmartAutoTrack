@@ -67,7 +67,7 @@ if (!function_exists('gv2_donut_svg')) {
         $cy = $size / 2;
         $circumference = 2 * M_PI * $r;
         $svg = '<svg class="gv2-donut" width="' . $size . '" height="' . $size . '" viewBox="0 0 ' . $size . ' ' . $size . '">';
-        $svg .= '<circle cx="' . $cx . '" cy="' . $cy . '" r="' . $r . '" fill="none" stroke="#EEF2F2" stroke-width="' . $stroke . '"/>';
+        $svg .= '<circle cx="' . $cx . '" cy="' . $cy . '" r="' . $r . '" fill="none" stroke="#EFF0F6" stroke-width="' . $stroke . '"/>';
         if ($total > 0) {
             $offset = 0;
             foreach ($segments as $seg) {
@@ -93,7 +93,7 @@ if (!function_exists('gv2_trend_svg')) {
      * d'interventions par jour sur les 7 derniers jours). Pas de librairie —
      * un chemin quadratique simple calculé à partir des points réels.
      */
-    function gv2_trend_svg(array $values, int $width = 320, int $height = 90, string $color = '#0D9488'): string {
+    function gv2_trend_svg(array $values, int $width = 320, int $height = 90, string $color = '#3956E8'): string {
         $count = count($values);
         if ($count === 0) return '';
         $max = max(1, max($values));

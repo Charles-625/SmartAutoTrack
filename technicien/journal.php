@@ -66,7 +66,7 @@ $tachesADemarrer = (int)$stmt->fetchColumn();
 // Couleurs de l'icône et libellé affichés pour chaque catégorie du journal.
 $icons = [
     'intervention' => ['bg' => '#E7F3FC', 'color' => '#1E7DBF'],
-    'reparation' => ['bg' => '#E4F7EE', 'color' => '#1E8A5A'],
+    'reparation' => ['bg' => '#E9F6EE', 'color' => '#1E8A4C'],
     'anomalie' => ['bg' => '#FDEDEE', 'color' => '#E5484D'],
 ];
 $categorieLabels = ['intervention' => 'Intervention', 'reparation' => 'Réparation', 'anomalie' => 'Anomalie'];
@@ -108,7 +108,7 @@ include '../includes/header.php';
                 <div class="tv2-empty">Aucune activité pour le moment. Cet historique se remplit automatiquement dès que vous démarrez une intervention, enregistrez une réparation ou constatez une anomalie.</div>
             <?php else: ?>
                 <div class="tv2-timeline">
-                    <?php foreach ($journal as $j): $icon = $icons[$j['categorie']] ?? ['bg' => '#F2EEE7', 'color' => '#7A6A57']; ?>
+                    <?php foreach ($journal as $j): $icon = $icons[$j['categorie']] ?? ['bg' => '#EFF0F6', 'color' => '#666C8E']; ?>
                         <div class="tv2-timeline-item">
                             <div class="tv2-timeline-dot" style="background:<?php echo h($icon['bg']); ?>;">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" fill="<?php echo h($icon['color']); ?>"/></svg>

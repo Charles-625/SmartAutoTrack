@@ -84,9 +84,9 @@ include '../includes/header.php';
 
         <div class="tv2-card tv2-panel" style="max-width:520px;">
             <div class="tv2-panel-head"><h2>Compte</h2></div>
-            <p style="color:#7A6A57; font-size:14px; line-height:1.6; margin:0 0 14px;">
+            <p style="color:#666C8E; font-size:14px; line-height:1.6; margin:0 0 14px;">
                 Pour modifier vos informations de contact, vos compétences ou votre mot de passe, rendez-vous sur votre
-                <a href="<?php echo SITE_URL; ?>profile.php" style="color:#D97706; font-weight:600;">page de profil</a>.
+                <a href="<?php echo SITE_URL; ?>profile.php" style="color:#3956E8; font-weight:600;">page de profil</a>.
             </p>
             <a href="<?php echo SITE_URL; ?>profile.php" class="tv2-btn-outline" style="text-decoration:none; display:inline-block;">Aller à mon profil</a>
         </div>

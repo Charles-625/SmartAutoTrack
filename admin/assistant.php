@@ -87,7 +87,7 @@ include '../includes/header.php';
 
 <?php if ($aiEnabled): ?>
 <script>window.AI_HISTORY = <?php echo json_encode(aiHistory(ROLE_ADMIN), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;</script>
-<script src="<?php echo SITE_URL; ?>assets/js/assistant.js"></script>
+<script src="<?php echo h(asset_url('assets/js/assistant.js')); ?>"></script>
 <?php endif; ?>
 
 <?php include '../includes/footer.php'; ?>

@@ -290,12 +290,12 @@ $(document).ready(function() {
             datasets: [{
                 label: 'Anomalies détectées',
                 data: evolutionData.map(item => item.count),
-                borderColor: '#1E90FF',
-                backgroundColor: 'rgba(30, 144, 255, 0.1)',
+                borderColor: '#3956E8',
+                backgroundColor: 'rgba(57, 86, 232, 0.1)',
                 borderWidth: 3,
                 fill: true,
                 tension: 0.4,
-                pointBackgroundColor: '#1E90FF',
+                pointBackgroundColor: '#3956E8',
                 pointBorderColor: '#ffffff',
                 pointBorderWidth: 2,
                 pointRadius: 6
@@ -357,7 +357,7 @@ $(document).ready(function() {
             datasets: [{
                 label: 'Nombre d\'anomalies',
                 data: Object.values(typesData),
-                backgroundColor: '#1E90FF',
+                backgroundColor: '#3956E8',
                 borderRadius: 4,
                 borderSkipped: false
             }]

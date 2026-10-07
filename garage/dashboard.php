@@ -67,9 +67,9 @@ $stmt->execute([$garageId]);
 $repartition = $stmt->fetch();
 $donutSegments = [
     ['label' => 'Nouvelles demandes', 'value' => (int)($repartition['nouvelle'] ?? 0), 'color' => '#1E7DBF'],
-    ['label' => 'Planifiées', 'value' => (int)($repartition['planifiee'] ?? 0), 'color' => '#5C7276'],
+    ['label' => 'Planifiées', 'value' => (int)($repartition['planifiee'] ?? 0), 'color' => '#6D74A0'],
     ['label' => 'En cours', 'value' => (int)($repartition['en_cours'] ?? 0), 'color' => '#C8871A'],
-    ['label' => 'Terminées', 'value' => (int)($repartition['terminee'] ?? 0), 'color' => '#1E8A5A'],
+    ['label' => 'Terminées', 'value' => (int)($repartition['terminee'] ?? 0), 'color' => '#1E8A4C'],
 ];
 $donutTotal = array_sum(array_column($donutSegments, 'value'));
 
@@ -157,7 +157,7 @@ include '../includes/header.php';
             <div class="gv2-topbar-actions">
                 <div class="gv2-notif-wrap">
                     <button class="gv2-iconbtn" id="notificationBtn" aria-label="Notifications" type="button">
-                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M6 10C6 6.7 8.7 4 12 4C15.3 4 18 6.7 18 10V14L20 17H4L6 14V10Z" stroke="#12262A" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 20C10.4 20.8 11.1 21.3 12 21.3C12.9 21.3 13.6 20.8 14 20" stroke="#12262A" stroke-width="1.8" stroke-linecap="round"/></svg>
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M6 10C6 6.7 8.7 4 12 4C15.3 4 18 6.7 18 10V14L20 17H4L6 14V10Z" stroke="#171B33" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 20C10.4 20.8 11.1 21.3 12 21.3C12.9 21.3 13.6 20.8 14 20" stroke="#171B33" stroke-width="1.8" stroke-linecap="round"/></svg>
                         <span class="gv2-notif-dot" id="notificationCounter"></span>
                     </button>
                     <div class="gv2-notif-panel" id="notificationPanel">
@@ -184,8 +184,8 @@ include '../includes/header.php';
                 </div>
             </div>
             <div class="gv2-card gv2-stat-card">
-                <div class="gv2-stat-icon" style="background:#EEF2F2;">
-                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#5C7276" stroke-width="1.8"/><path d="M8 8H16M8 12H16M8 16H12" stroke="#5C7276" stroke-width="1.8" stroke-linecap="round"/></svg>
+                <div class="gv2-stat-icon" style="background:#EFF0F6;">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#666C8E" stroke-width="1.8"/><path d="M8 8H16M8 12H16M8 16H12" stroke="#666C8E" stroke-width="1.8" stroke-linecap="round"/></svg>
                 </div>
                 <div>
                     <div class="gv2-stat-value"><?php echo (int)$interventionsPlanifiees; ?></div>
@@ -202,8 +202,8 @@ include '../includes/header.php';
                 </div>
             </div>
             <div class="gv2-card gv2-stat-card">
-                <div class="gv2-stat-icon" style="background:#E4F7EE;">
-                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#1E8A5A" stroke-width="1.8"/><path d="M8 12.5L10.5 15L16 9" stroke="#1E8A5A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <div class="gv2-stat-icon" style="background:#E9F6EE;">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#1E8A4C" stroke-width="1.8"/><path d="M8 12.5L10.5 15L16 9" stroke="#1E8A4C" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </div>
                 <div>
                     <div class="gv2-stat-value"><?php echo (int)$reparationsTerminees; ?></div>
@@ -221,7 +221,7 @@ include '../includes/header.php';
                 <?php else: ?>
                     <?php echo gv2_trend_svg($trendValues, 560, 110); ?>
                     <div style="display:flex; justify-content:space-between; margin-top:6px;">
-                        <?php foreach ($trendLabels as $l): ?><span style="font-size:11px; color:#8AA0A3;"><?php echo h($l); ?></span><?php endforeach; ?>
+                        <?php foreach ($trendLabels as $l): ?><span style="font-size:11px; color:#8B90B3;"><?php echo h($l); ?></span><?php endforeach; ?>
                     </div>
                 <?php endif; ?>
             </div>
@@ -306,10 +306,10 @@ include '../includes/header.php';
                 <!-- Messages -->
                 <div class="gv2-card gv2-panel-sm">
                     <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="#12262A" stroke-width="1.8"/><path d="M3 6.5L12 13L21 6.5" stroke="#12262A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="#171B33" stroke-width="1.8"/><path d="M3 6.5L12 13L21 6.5" stroke="#171B33" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
                         <h2 style="margin:0; font-family:'Sora', sans-serif; font-size:15px; font-weight:700;">Messages</h2>
                     </div>
-                    <p style="margin:0 0 14px; font-size:13px; line-height:1.5; color:#5C7276;"><?php echo (int)$messagesNonLus; ?> message<?php echo $messagesNonLus > 1 ? 's' : ''; ?> non lu<?php echo $messagesNonLus > 1 ? 's' : ''; ?> de vos clients.</p>
+                    <p style="margin:0 0 14px; font-size:13px; line-height:1.5; color:#666C8E;"><?php echo (int)$messagesNonLus; ?> message<?php echo $messagesNonLus > 1 ? 's' : ''; ?> non lu<?php echo $messagesNonLus > 1 ? 's' : ''; ?> de vos clients.</p>
                     <a href="<?php echo SITE_URL; ?>messages/index.php" class="gv2-btn-dark" style="display:block; text-align:center; box-sizing:border-box; text-decoration:none;">Ouvrir la messagerie</a>
                 </div>
             </div>

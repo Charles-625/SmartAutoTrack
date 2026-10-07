@@ -108,7 +108,7 @@ if (!function_exists('tv2_donut_svg')) {
         $cy = $size / 2;
         $circumference = 2 * M_PI * $r;
         $svg = '<svg class="tv2-donut" width="' . $size . '" height="' . $size . '" viewBox="0 0 ' . $size . ' ' . $size . '">';
-        $svg .= '<circle cx="' . $cx . '" cy="' . $cy . '" r="' . $r . '" fill="none" stroke="#F2EEE7" stroke-width="' . $stroke . '"/>';
+        $svg .= '<circle cx="' . $cx . '" cy="' . $cy . '" r="' . $r . '" fill="none" stroke="#EFF0F6" stroke-width="' . $stroke . '"/>';
         if ($total > 0) {
             $offset = 0;
             foreach ($segments as $seg) {
@@ -130,7 +130,7 @@ if (!function_exists('tv2_donut_svg')) {
 
 if (!function_exists('tv2_trend_svg')) {
     /** Courbe (aire) SVG pure — identique au principe déjà utilisé pour le garage (garage/includes/helpers.php::gv2_trend_svg). */
-    function tv2_trend_svg(array $values, int $width = 320, int $height = 90, string $color = '#D97706'): string {
+    function tv2_trend_svg(array $values, int $width = 320, int $height = 90, string $color = '#3956E8'): string {
         $count = count($values);
         if ($count === 0) return '';
         $max = max(1, max($values));

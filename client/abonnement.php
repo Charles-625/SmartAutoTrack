@@ -128,7 +128,7 @@ include '../includes/header.php';
         <div class="v2-card v2-panel" style="max-width: 560px;">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
                 <h2 style="margin:0; font-family:'Sora', sans-serif; font-size:17px;">Formule actuelle</h2>
-                <span style="font-size:11px; font-weight:700; color:#4A4F73; background:#F1F2F9; padding:4px 10px; border-radius:20px;">GRATUIT</span>
+                <span style="font-size:11px; font-weight:700; color:#6D74A0; background:#EFF0F6; padding:4px 10px; border-radius:20px;">GRATUIT</span>
             </div>
             <?php if ($isEntreprise): ?>
                 <p style="color:#666C8E; font-size:14px; line-height:1.6;">
@@ -136,7 +136,7 @@ include '../includes/header.php';
                     <?php echo (int)$fleetSize; ?> véhicule<?php echo $fleetSize > 1 ? 's' : ''; ?> : supervision de flotte,
                     demandes d'intervention, historique de réparations, consultation des anomalies, messagerie et notifications.
                 </p>
-                <div class="v2-alert" style="background:#EAEFFC; color:#2540C4; margin-top:16px;">
+                <div class="v2-alert" style="background:#F3F5FE; color:#2540C4; margin-top:16px;">
                     Les formules Premium entreprise seront proposées par <strong>paliers selon la taille de votre parc</strong>
                     (nombre de véhicules suivis), avec suivi prioritaire et délais d'intervention réduits.
                     Les tarifs et paliers n'ont pas encore été activés — revenez bientôt.
@@ -146,7 +146,7 @@ include '../includes/header.php';
                     Vous utilisez actuellement la formule gratuite de SmartAutoTrack : suivi de vos véhicules,
                     demandes d'intervention, historique de réparations, messagerie et notifications.
                 </p>
-                <div class="v2-alert" style="background:#EEF1FF; color:#3956E8; margin-top:16px;">
+                <div class="v2-alert" style="background:#F3F5FE; color:#3956E8; margin-top:16px;">
                     Les formules Premium (suivi prioritaire, délais d'intervention réduits, options supplémentaires)
                     sont en cours de définition. Les tarifs et paliers n'ont pas encore été activés — revenez bientôt.
                 </div>
@@ -283,12 +283,12 @@ include '../includes/header.php';
                     <?php endif; ?>
 
                     <?php if (!$onlinePayable): ?>
-                        <div class="v2-alert" style="background:#EAEFFC; color:#2540C4;">
+                        <div class="v2-alert" style="background:#F3F5FE; color:#2540C4;">
                             Au-delà de <?php echo (int)SUB_ENTREPRISE_MAX_ONLINE; ?> véhicules, l'abonnement Premium se fait sur devis :
                             <a href="sav.php">contactez-nous</a>.
                         </div>
                     <?php elseif (!$paymentsEnabled): ?>
-                        <div class="v2-alert" style="background:#EEF1FF; color:#3956E8;">
+                        <div class="v2-alert" style="background:#F3F5FE; color:#3956E8;">
                             Le paiement en ligne n'est pas encore disponible. Revenez bientôt.
                         </div>
                     <?php else: ?>
@@ -300,7 +300,7 @@ include '../includes/header.php';
                                        style="width:100%; box-sizing:border-box; border:1px solid #DDE0F0; border-radius:10px; padding:10px 12px; font-family:'Manrope', sans-serif; font-size:13.5px;">
                                 <p class="v2-note">Au moins <?php echo (int)$minVehicles; ?> (vos véhicules actuels, minimum <?php echo (int)SUB_ENTREPRISE_MIN_VEHICLES; ?>).</p>
                             </div>
-                            <div class="v2-alert" id="subQuote" style="display:none; background:#EAEFFC; color:#2540C4;">
+                            <div class="v2-alert" id="subQuote" style="display:none; background:#F3F5FE; color:#2540C4;">
                                 Au-delà de <?php echo (int)SUB_ENTREPRISE_MAX_ONLINE; ?> véhicules, l'abonnement se fait sur devis :
                                 <a href="sav.php">contactez-nous</a>.
                             </div>

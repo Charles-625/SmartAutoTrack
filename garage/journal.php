@@ -61,11 +61,11 @@ $demandesEnAttente = (int)$stmt->fetchColumn();
 // Couleurs de l'icône et libellé affichés pour chaque catégorie du journal.
 $icons = [
     'intervention' => ['bg' => '#E7F3FC', 'color' => '#1E7DBF'],
-    'reparation' => ['bg' => '#E4F7EE', 'color' => '#1E8A5A'],
+    'reparation' => ['bg' => '#E9F6EE', 'color' => '#1E8A4C'],
     'anomalie' => ['bg' => '#FDEDEE', 'color' => '#E5484D'],
     'technicien' => ['bg' => '#E7F3FC', 'color' => '#1E7DBF'],
-    'garage' => ['bg' => '#EAF6F4', 'color' => '#0D9488'],
-    'compte' => ['bg' => '#EEF2F2', 'color' => '#5C7276'],
+    'garage' => ['bg' => '#F3F5FE', 'color' => '#3956E8'],
+    'compte' => ['bg' => '#EFF0F6', 'color' => '#6D74A0'],
 ];
 $categorieLabels = [
     'intervention' => 'Intervention', 'reparation' => 'Réparation', 'anomalie' => 'Anomalie',
@@ -109,7 +109,7 @@ include '../includes/header.php';
                 <div class="gv2-empty">Aucune activité pour ce filtre. Le journal se remplit automatiquement au fil des actions de votre garage (acceptation, affectation, démarrage, clôture, anomalie constatée...).</div>
             <?php else: ?>
                 <div class="gv2-timeline">
-                    <?php foreach ($journal as $j): $icon = $icons[$j['categorie']] ?? ['bg' => '#EEF2F2', 'color' => '#5C7276']; ?>
+                    <?php foreach ($journal as $j): $icon = $icons[$j['categorie']] ?? ['bg' => '#EFF0F6', 'color' => '#6D74A0']; ?>
                         <div class="gv2-timeline-item">
                             <div class="gv2-timeline-dot" style="background:<?php echo h($icon['bg']); ?>;">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" fill="<?php echo h($icon['color']); ?>"/></svg>

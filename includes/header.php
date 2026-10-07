@@ -43,11 +43,29 @@ $showNavbar = $isLoggedIn && empty($hideNavbar);
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
+    <?php
+    if (!function_exists('asset_url')) {
+        /**
+         * URL d'un fichier de assets/ suivie de ?v=<date de modification> :
+         * le navigateur recharge le fichier dès qu'il change, au lieu de
+         * garder une ancienne copie en cache (ex. après un changement de
+         * couleurs dans une feuille de style).
+         *
+         * @param string $rel Chemin relatif à la racine du site (ex. 'assets/css/style.css').
+         * @return string URL à échapper avec h() avant affichage.
+         */
+        function asset_url(string $rel): string {
+            $file = __DIR__ . '/../' . ltrim($rel, '/');
+            $version = is_file($file) ? (string)filemtime($file) : '';
+            return SITE_URL . ltrim($rel, '/') . ($version !== '' ? '?v=' . $version : '');
+        }
+    }
+    ?>
     <!-- CSS personnalisé -->
-    <link rel="stylesheet" href="<?php echo SITE_URL; ?>assets/css/style.css">
-    <link rel="stylesheet" href="<?php echo SITE_URL; ?>assets/css/themes.css">
+    <link rel="stylesheet" href="<?php echo h(asset_url('assets/css/style.css')); ?>">
+    <link rel="stylesheet" href="<?php echo h(asset_url('assets/css/themes.css')); ?>">
     <?php if (!empty($extraStylesheets)): foreach ((array)$extraStylesheets as $extraCss): ?>
-        <link rel="stylesheet" href="<?php echo SITE_URL . h($extraCss); ?>">
+        <link rel="stylesheet" href="<?php echo h(asset_url($extraCss)); ?>">
     <?php endforeach; endif; ?>
     <?php if (!empty($extraFonts)): foreach ((array)$extraFonts as $extraFont): ?>
         <link rel="stylesheet" href="<?php echo h($extraFont); ?>">
@@ -55,8 +73,8 @@ $showNavbar = $isLoggedIn && empty($hideNavbar);
 
     <!-- JavaScript -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="<?php echo SITE_URL; ?>assets/js/main.js"></script>
-    <script src="<?php echo SITE_URL; ?>assets/js/themes.js"></script>
+    <script src="<?php echo h(asset_url('assets/js/main.js')); ?>"></script>
+    <script src="<?php echo h(asset_url('assets/js/themes.js')); ?>"></script>
     
     <!-- Script pour initialiser le thème -->
     <script>

@@ -134,7 +134,7 @@ include '../includes/header.php';
                                             </div>
                                             <?php echo h($t['marque'] . ' ' . $t['modele']); ?>
                                         </div>
-                                        <div style="font-size:11.5px; color:#A5977F; margin-top:2px;"><?php echo h($t['immatriculation']); ?></div>
+                                        <div style="font-size:11.5px; color:#8B90B3; margin-top:2px;"><?php echo h($t['immatriculation']); ?></div>
                                     </td>
                                     <td><?php echo h($t['type'] ?: '—'); ?></td>
                                     <td><?php echo h(date('d/m/Y', strtotime($t['dateIntervention']))); ?></td>

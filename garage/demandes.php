@@ -242,12 +242,12 @@ include '../includes/header.php';
                                             </div>
                                             <?php echo h($d['marque'] . ' ' . $d['modele']); ?>
                                         </div>
-                                        <div style="font-size:11.5px; color:#8AA0A3; margin-top:2px;"><?php echo h($d['immatriculation']); ?></div>
+                                        <div style="font-size:11.5px; color:#8B90B3; margin-top:2px;"><?php echo h($d['immatriculation']); ?></div>
                                     </td>
                                     <td>
                                         <?php echo h($d['type'] ?: '—'); ?>
                                         <?php if ($d['type'] === ANOMALY_REQUEST_MOTIF && $d['anomalie_niveau']): $anomalieBadge = $d['anomalie_niveau'] === 'CRITIQUE' ? 'bad' : ($d['anomalie_niveau'] === 'MOYEN' ? 'warn' : 'neutral'); ?>
-                                            <div style="font-size:11.5px; color:#8AA0A3; margin-top:2px;"><?php echo h($d['anomalie_type'] ?: 'Type non précisé'); ?></div>
+                                            <div style="font-size:11.5px; color:#8B90B3; margin-top:2px;"><?php echo h($d['anomalie_type'] ?: 'Type non précisé'); ?></div>
                                             <span class="gv2-badge <?php echo h($anomalieBadge); ?>" title="<?php echo h(anomaly_severity_label($d['anomalie_niveau'])); ?>" style="display:inline-block; margin-top:4px;"><?php echo h('Gravité : ' . ucfirst(strtolower($d['anomalie_niveau']))); ?></span>
                                         <?php endif; ?>
                                     </td>

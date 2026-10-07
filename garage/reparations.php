@@ -187,7 +187,7 @@ include '../includes/header.php';
                         <tbody>
                             <?php foreach ($reparations as $r): ?>
                                 <tr>
-                                    <td><?php echo h($r['marque'] . ' ' . $r['modele']); ?><div style="font-size:11.5px; color:#8AA0A3;"><?php echo h($r['immatriculation']); ?></div></td>
+                                    <td><?php echo h($r['marque'] . ' ' . $r['modele']); ?><div style="font-size:11.5px; color:#8B90B3;"><?php echo h($r['immatriculation']); ?></div></td>
                                     <td><?php echo h($r['client_prenom'] . ' ' . $r['client_nom']); ?></td>
                                     <td><?php echo h($r['technicien_nom'] ? $r['technicien_prenom'] . ' ' . $r['technicien_nom'] : '—'); ?></td>
                                     <td><?php echo h($r['titre'] ?: '—'); ?></td>
@@ -199,14 +199,14 @@ include '../includes/header.php';
                                         <td>
                                             <?php if ($r['statut'] === 'TERMINEE' && (float)$r['cout'] > 0): $payState = $paymentStates[(int)$r['id']] ?? null; ?>
                                                 <?php if ($payState === 'PAYE'): ?>
-                                                    <span class="gv2-badge ok">Payé</span><?php if (!empty($paidDates[(int)$r['id']])): ?><div style="font-size:11.5px; color:#8AA0A3;">le <?php echo h(date('d/m/Y', strtotime($paidDates[(int)$r['id']]))); ?></div><?php endif; ?>
+                                                    <span class="gv2-badge ok">Payé</span><?php if (!empty($paidDates[(int)$r['id']])): ?><div style="font-size:11.5px; color:#8B90B3;">le <?php echo h(date('d/m/Y', strtotime($paidDates[(int)$r['id']]))); ?></div><?php endif; ?>
                                                 <?php elseif ($payState === 'EN_ATTENTE'): ?>
                                                     <span class="gv2-badge warn">Paiement en cours</span>
                                                 <?php else: ?>
                                                     <span class="gv2-badge warn">En attente de paiement</span>
                                                 <?php endif; ?>
                                             <?php else: ?>
-                                                <span style="color:#8AA0A3;">—</span>
+                                                <span style="color:#8B90B3;">—</span>
                                             <?php endif; ?>
                                         </td>
                                     <?php endif; ?>

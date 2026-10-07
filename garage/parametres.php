@@ -202,16 +202,16 @@ include '../includes/header.php';
 
         <div class="gv2-card gv2-panel" style="max-width:520px;">
             <div class="gv2-panel-head"><h2>Compte</h2></div>
-            <p style="color:#5C7276; font-size:14px; line-height:1.6; margin:0 0 14px;">
+            <p style="color:#666C8E; font-size:14px; line-height:1.6; margin:0 0 14px;">
                 Pour modifier vos informations de contact ou votre mot de passe, rendez-vous sur votre
-                <a href="<?php echo SITE_URL; ?>profile.php" style="color:#0D9488; font-weight:600;">page de profil</a>.
+                <a href="<?php echo SITE_URL; ?>profile.php" style="color:#3956E8; font-weight:600;">page de profil</a>.
             </p>
             <a href="<?php echo SITE_URL; ?>profile.php" class="gv2-btn-outline" style="text-decoration:none; display:inline-block;">Aller à mon profil</a>
         </div>
 
         <div class="gv2-card gv2-panel" style="max-width:520px;">
             <div class="gv2-panel-head"><h2>Documents du garage</h2></div>
-            <p style="color:#5C7276; font-size:14px; line-height:1.6; margin:0 0 14px;">
+            <p style="color:#666C8E; font-size:14px; line-height:1.6; margin:0 0 14px;">
                 Attestation d'assurance, extrait Kbis, certifications... Chaque document est vérifié par un administrateur après envoi.
             </p>
 

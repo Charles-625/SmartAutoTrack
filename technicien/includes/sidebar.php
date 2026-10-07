@@ -37,40 +37,40 @@ $sidebarUnread = activity_log_sidebar_counts($conn ?? null, ROLE_TECHNICIEN, (in
     <div class="tv2-nav-label">Mon espace</div>
     <nav class="tv2-nav">
         <a href="<?php echo SITE_URL; ?>technicien/dashboard.php" class="tv2-navitem <?php echo $navActive('dashboard'); ?>">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="2" stroke="#F3E9DC" stroke-width="1.8"/><rect x="13" y="3" width="8" height="5" rx="2" stroke="#F3E9DC" stroke-width="1.8"/><rect x="13" y="12" width="8" height="9" rx="2" stroke="#F3E9DC" stroke-width="1.8"/><rect x="3" y="15" width="8" height="6" rx="2" stroke="#F3E9DC" stroke-width="1.8"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="2" stroke="#DEE1F5" stroke-width="1.8"/><rect x="13" y="3" width="8" height="5" rx="2" stroke="#DEE1F5" stroke-width="1.8"/><rect x="13" y="12" width="8" height="9" rx="2" stroke="#DEE1F5" stroke-width="1.8"/><rect x="3" y="15" width="8" height="6" rx="2" stroke="#DEE1F5" stroke-width="1.8"/></svg>
             <span class="label">Tableau de bord</span>
         </a>
         <a href="<?php echo SITE_URL; ?>technicien/taches.php" class="tv2-navitem <?php echo $navActive('taches'); ?>">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#F3E9DC" stroke-width="1.8"/><path d="M8.5 12L11 14.5L16 9" stroke="#F3E9DC" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#DEE1F5" stroke-width="1.8"/><path d="M8.5 12L11 14.5L16 9" stroke="#DEE1F5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span class="label">Mes tâches</span>
             <?php if ($tachesBadge > 0): ?>
                 <span class="tv2-navbadge warning"><?php echo (int)$tachesBadge; ?></span>
             <?php endif; ?>
         </a>
         <a href="<?php echo SITE_URL; ?>technicien/interventions.php" class="tv2-navitem <?php echo $navActive('interventions'); ?>">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#F3E9DC" stroke-width="1.8"/><path d="M8 8H16M8 12H16M8 16H12" stroke="#F3E9DC" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#DEE1F5" stroke-width="1.8"/><path d="M8 8H16M8 12H16M8 16H12" stroke="#DEE1F5" stroke-width="1.8" stroke-linecap="round"/></svg>
             <span class="label">Mes interventions</span>
             <?php echo activity_log_unread_badge($sidebarUnread['interventions']); ?>
         </a>
         <a href="<?php echo SITE_URL; ?>technicien/reparations.php" class="tv2-navitem <?php echo $navActive('reparations'); ?>">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M14.5 4.5L19.5 9.5L9 20H4V15L14.5 4.5Z" stroke="#F3E9DC" stroke-width="1.7" stroke-linejoin="round"/><path d="M12.5 6.5L17.5 11.5" stroke="#F3E9DC" stroke-width="1.7"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M14.5 4.5L19.5 9.5L9 20H4V15L14.5 4.5Z" stroke="#DEE1F5" stroke-width="1.7" stroke-linejoin="round"/><path d="M12.5 6.5L17.5 11.5" stroke="#DEE1F5" stroke-width="1.7"/></svg>
             <span class="label">Mes réparations</span>
         </a>
         <a href="<?php echo SITE_URL; ?>technicien/anomalies.php" class="tv2-navitem <?php echo $navActive('anomalies'); ?>">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3L22 20H2L12 3Z" stroke="#F3E9DC" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 10V14" stroke="#F3E9DC" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="17" r="0.9" fill="#F3E9DC"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3L22 20H2L12 3Z" stroke="#DEE1F5" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 10V14" stroke="#DEE1F5" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="17" r="0.9" fill="#DEE1F5"/></svg>
             <span class="label">Mes anomalies</span>
         </a>
         <a href="<?php echo SITE_URL; ?>technicien/historique.php" class="tv2-navitem <?php echo $navActive('historique'); ?>">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#F3E9DC" stroke-width="1.8"/><path d="M12 7V12L15.5 14" stroke="#F3E9DC" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#DEE1F5" stroke-width="1.8"/><path d="M12 7V12L15.5 14" stroke="#DEE1F5" stroke-width="1.8" stroke-linecap="round"/></svg>
             <span class="label">Mon historique</span>
         </a>
         <a href="<?php echo SITE_URL; ?>technicien/journal.php" class="tv2-navitem <?php echo $navActive('journal'); ?>">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#F3E9DC" stroke-width="1.8"/><path d="M8 7.5H16M8 11.5H16M8 15.5H13" stroke="#F3E9DC" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="2" stroke="#DEE1F5" stroke-width="1.8"/><path d="M8 7.5H16M8 11.5H16M8 15.5H13" stroke="#DEE1F5" stroke-width="1.6" stroke-linecap="round"/></svg>
             <span class="label">Journal d'activité</span>
             <?php echo activity_log_unread_badge($sidebarUnread['journal']); ?>
         </a>
         <a href="<?php echo SITE_URL; ?>messages/index.php" class="tv2-navitem <?php echo $navActive('messages'); ?>">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="#F3E9DC" stroke-width="1.8"/><path d="M3 6.5L12 13L21 6.5" stroke="#F3E9DC" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="#DEE1F5" stroke-width="1.8"/><path d="M3 6.5L12 13L21 6.5" stroke="#DEE1F5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span class="label">Messages</span>
             <span class="tv2-navbadge danger" id="messageCounter">0</span>
         </a>
@@ -81,11 +81,11 @@ $sidebarUnread = activity_log_sidebar_counts($conn ?? null, ROLE_TECHNICIEN, (in
     <div class="tv2-nav-label">Compte</div>
     <nav class="tv2-nav">
         <a href="<?php echo SITE_URL; ?>profile.php" class="tv2-navitem <?php echo $navActive('profil'); ?>">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.6" stroke="#F3E9DC" stroke-width="1.8"/><path d="M4.5 20C5.8 16 8.6 14.5 12 14.5C15.4 14.5 18.2 16 19.5 20" stroke="#F3E9DC" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.6" stroke="#DEE1F5" stroke-width="1.8"/><path d="M4.5 20C5.8 16 8.6 14.5 12 14.5C15.4 14.5 18.2 16 19.5 20" stroke="#DEE1F5" stroke-width="1.8" stroke-linecap="round"/></svg>
             <span class="label">Profil</span>
         </a>
         <a href="<?php echo SITE_URL; ?>technicien/parametres.php" class="tv2-navitem <?php echo $navActive('parametres'); ?>">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="#F3E9DC" stroke-width="1.8"/><path d="M19 12C19 12.4 19 12.8 18.9 13.2L21 14.7L19.5 17.3L17.1 16.4C16.5 16.9 15.8 17.3 15 17.6L14.6 20H11.4L11 17.6C10.2 17.3 9.5 16.9 8.9 16.4L6.5 17.3L5 14.7L7.1 13.2C7 12.8 7 12.4 7 12C7 11.6 7 11.2 7.1 10.8L5 9.3L6.5 6.7L8.9 7.6C9.5 7.1 10.2 6.7 11 6.4L11.4 4H14.6L15 6.4C15.8 6.7 16.5 7.1 17.1 7.6L19.5 6.7L21 9.3L18.9 10.8C19 11.2 19 11.6 19 12Z" stroke="#F3E9DC" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="#DEE1F5" stroke-width="1.8"/><path d="M19 12C19 12.4 19 12.8 18.9 13.2L21 14.7L19.5 17.3L17.1 16.4C16.5 16.9 15.8 17.3 15 17.6L14.6 20H11.4L11 17.6C10.2 17.3 9.5 16.9 8.9 16.4L6.5 17.3L5 14.7L7.1 13.2C7 12.8 7 12.4 7 12C7 11.6 7 11.2 7.1 10.8L5 9.3L6.5 6.7L8.9 7.6C9.5 7.1 10.2 6.7 11 6.4L11.4 4H14.6L15 6.4C15.8 6.7 16.5 7.1 17.1 7.6L19.5 6.7L21 9.3L18.9 10.8C19 11.2 19 11.6 19 12Z" stroke="#DEE1F5" stroke-width="1.5" stroke-linejoin="round"/></svg>
             <span class="label">Paramètres</span>
         </a>
     </nav>
@@ -99,7 +99,7 @@ $sidebarUnread = activity_log_sidebar_counts($conn ?? null, ROLE_TECHNICIEN, (in
             <div class="tv2-usercard-role">Technicien</div>
         </div>
         <a href="<?php echo SITE_URL; ?>auth/logout.php" class="tv2-usercard-logout" aria-label="Déconnexion" title="Déconnexion">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9 21H5C3.9 21 3 20.1 3 19V5C3 3.9 3.9 3 5 3H9" stroke="#A5977F" stroke-width="1.8" stroke-linecap="round"/><path d="M16 17L21 12L16 7" stroke="#A5977F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 12H9" stroke="#A5977F" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9 21H5C3.9 21 3 20.1 3 19V5C3 3.9 3.9 3 5 3H9" stroke="#8B90B3" stroke-width="1.8" stroke-linecap="round"/><path d="M16 17L21 12L16 7" stroke="#8B90B3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 12H9" stroke="#8B90B3" stroke-width="1.8" stroke-linecap="round"/></svg>
         </a>
     </div>
 </aside>

@@ -145,7 +145,7 @@ include '../includes/header.php';
                         <tbody>
                             <?php foreach ($anomalies as $a): $isActive = in_array($a['statut'], ['NOUVELLE', 'EN_COURS'], true); $niveauBadge = $a['niveau'] === 'CRITIQUE' ? 'bad' : ($a['niveau'] === 'FAIBLE' ? 'neutral' : 'warn'); ?>
                                 <tr>
-                                    <td><?php echo h($a['marque'] . ' ' . $a['modele']); ?><div style="font-size:11.5px; color:#A5977F;"><?php echo h($a['immatriculation']); ?></div></td>
+                                    <td><?php echo h($a['marque'] . ' ' . $a['modele']); ?><div style="font-size:11.5px; color:#8B90B3;"><?php echo h($a['immatriculation']); ?></div></td>
                                     <td><?php echo h($a['description']); ?></td>
                                     <td><span class="tv2-badge <?php echo h($niveauBadge); ?>"><?php echo h(ucfirst(strtolower($a['niveau']))); ?></span></td>
                                     <td><?php echo h(date('d/m/Y', strtotime($a['dateDetection']))); ?></td>

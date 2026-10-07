@@ -374,7 +374,7 @@ $displayMeta = function ($iv) use ($dbNow) {
 // Icône, couleurs et libellé du badge pour chaque statut d'affichage.
 $displayInfo = [
     'demande_envoyee' => ['icon' => 'send', 'bg' => '#EFF0F6', 'color' => '#6D74A0', 'badge' => 'neutral', 'label' => 'Demande envoyée', 'row' => 'pending'],
-    'planifiee'        => ['icon' => 'clock', 'bg' => '#EEF1FF', 'color' => '#3956E8', 'badge' => 'ok', 'label' => 'Planifiée', 'row' => ''],
+    'planifiee'        => ['icon' => 'clock', 'bg' => '#F3F5FE', 'color' => '#3956E8', 'badge' => 'ok', 'label' => 'Planifiée', 'row' => ''],
     'en_cours'         => ['icon' => 'clock', 'bg' => '#FFF4E2', 'color' => '#C8871A', 'badge' => 'warn', 'label' => 'En cours', 'row' => ''],
     'terminee'         => ['icon' => 'check', 'bg' => '#E9F6EE', 'color' => '#1E8A4C', 'badge' => 'ok', 'label' => 'Terminée', 'row' => ''],
     'annulee'          => ['icon' => 'close', 'bg' => '#FDEDEE', 'color' => '#E5484D', 'badge' => 'bad', 'label' => 'Annulée', 'row' => ''],
@@ -416,7 +416,7 @@ include '../includes/header.php';
                 </div>
             </div>
             <div class="v2-card v2-stat-card">
-                <div class="v2-stat-icon" style="background:#EEF1FF;"><i class="fas fa-calendar-check" style="color:#3956E8;"></i></div>
+                <div class="v2-stat-icon" style="background:#F3F5FE;"><i class="fas fa-calendar-check" style="color:#3956E8;"></i></div>
                 <div>
                     <div class="v2-stat-value"><?php echo (int)($counts['planifiee'] ?? 0); ?></div>
                     <div class="v2-stat-label">Planifiée(s)</div>

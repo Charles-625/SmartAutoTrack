@@ -320,7 +320,7 @@ include '../includes/header.php';
 
 .theme-option input[type="radio"]:checked + .theme-option {
     border-color: var(--primary-color);
-    background: rgba(30, 144, 255, 0.05);
+    background: rgba(57, 86, 232, 0.05);
 }
 
 .theme-preview {

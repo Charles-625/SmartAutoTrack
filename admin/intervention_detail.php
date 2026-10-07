@@ -253,7 +253,7 @@ include '../includes/header.php';
                             <?php if ($iv['nomGarage']): ?>
                                 <?php echo h($iv['nomGarage']); ?> <span class="av2-badge <?php echo h(av2_status_badge($iv['statutGarage'])); ?>"><?php echo h(av2_status_label($iv['statutGarage'])); ?></span>
                             <?php elseif ($iv['idTechnicien'] === null): ?>
-                                <span class="av2-badge warn">Aucun — demande à SmartAutoTrack, à affecter</span>
+                                <span class="av2-badge warn" style="white-space:normal;">Aucun — demande à SmartAutoTrack, à affecter</span>
                             <?php else: ?>
                                 <span class="av2-badge info">Aucun garage — <?php echo h($iv['technicien_prenom'] . ' ' . $iv['technicien_nom']); ?></span>
                             <?php endif; ?>
@@ -282,65 +282,118 @@ include '../includes/header.php';
                         <?php endif; ?>
                     </div>
 
-                    <?php if ($canAssignInternal): ?>
-                        <?php if (empty($techniciensInternes)): ?>
-                            <div class="av2-empty">Aucun technicien SmartAutoTrack validé disponible.</div>
-                        <?php else: ?>
-                            <form method="POST" action="intervention_detail.php?id=<?php echo (int)$iv['id']; ?>" style="margin-bottom:16px;">
-                                <input type="hidden" name="action" value="assign_internal">
-                                <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-                                <div class="av2-form-group">
-                                    <label>Technicien SmartAutoTrack</label>
-                                    <select name="technicien_id" required>
-                                        <option value="">Sélectionner un technicien interne</option>
-                                        <?php foreach ($techniciensInternes as $t): ?>
-                                            <option value="<?php echo (int)$t['id']; ?>"><?php echo h($t['prenom'] . ' ' . $t['nom'] . ($t['specialite'] ? ' — ' . $t['specialite'] : '')); ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                                <div class="av2-form-group">
-                                    <label>Garage (facultatif)</label>
-                                    <select name="support_garage_id">
-                                        <option value="">Aucun garage</option>
-                                        <?php foreach ($supportGarages as $g): ?>
-                                            <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                                <button type="submit" class="av2-btn-primary btn-confirm" data-confirm="<?php echo h('Affecter cette demande à ce technicien SmartAutoTrack ? Le technicien, le client et le garage éventuel seront notifiés.'); ?>" style="width:100%;">Affecter à un technicien interne</button>
-                            </form>
-                        <?php endif; ?>
+                    <?php
+                    // Un seul formulaire d'affectation. Quand les deux façons
+                    // d'affecter sont possibles (technicien SmartAutoTrack ou
+                    // garage), un choix en tête bascule l'action envoyée et
+                    // n'active que les champs utiles (les autres, désactivés, ne
+                    // sont ni obligatoires ni envoyés).
+                    $offerInternal = $canAssignInternal && !empty($techniciensInternes);
+                    $offerGarage = $canReassign && !empty($otherGarages);
+                    $defaultMode = $offerInternal ? 'internal' : 'garage';
+                    $reassignFieldLabel = $iv['idGarage'] ? 'Réaffecter à' : 'Garage';
+                    $reassignButtonLabel = $iv['idGarage'] ? 'Réaffecter le garage' : 'Affecter';
+                    // Un technicien déjà affecté (y compris SmartAutoTrack) est retiré
+                    // par admin_reassign_garage() : on le dit avant de confirmer.
+                    $reassignConfirm = ($iv['idGarage'] || $iv['idTechnicien'] !== null)
+                        ? 'Réaffecter cette intervention à un garage ? Le technicien déjà affecté sera retiré, le client et le nouveau garage seront notifiés.'
+                        : 'Affecter cette intervention à ce garage ? Le client et le garage seront notifiés.';
+                    $internalConfirm = 'Affecter cette demande à ce technicien SmartAutoTrack ? Le technicien, le client et le garage éventuel seront notifiés.';
+                    ?>
+                    <?php if ($canAssignInternal && empty($techniciensInternes)): ?>
+                        <div class="av2-empty" style="margin-bottom:12px;">Aucun technicien SmartAutoTrack validé disponible.</div>
+                    <?php endif; ?>
+                    <?php if ($canReassign && empty($otherGarages)): ?>
+                        <div class="av2-empty" style="margin-bottom:12px;">Aucun garage validé disponible pour l'affectation.</div>
                     <?php endif; ?>
 
-                    <?php if ($canReassign): ?>
-                        <?php if (empty($otherGarages)): ?>
-                            <div class="av2-empty">Aucun garage validé disponible pour l'affectation.</div>
-                        <?php else: ?>
-                            <?php
-                            $reassignFieldLabel = $iv['idGarage'] ? 'Réaffecter à' : 'Affecter à';
-                            $reassignButtonLabel = $iv['idGarage'] ? 'Réaffecter le garage' : 'Affecter le garage';
-                            // Un technicien déjà affecté (y compris SmartAutoTrack) est retiré
-                            // par admin_reassign_garage() : on le dit avant de confirmer.
-                            $reassignConfirm = ($iv['idGarage'] || $iv['idTechnicien'] !== null)
-                                ? 'Réaffecter cette intervention à un garage ? Le technicien déjà affecté sera retiré, le client et le nouveau garage seront notifiés.'
-                                : 'Affecter cette intervention à ce garage ? Le client et le garage seront notifiés.';
-                            ?>
-                            <form method="POST" action="intervention_detail.php?id=<?php echo (int)$iv['id']; ?>">
-                                <input type="hidden" name="action" value="reassign_garage">
-                                <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-                                <div class="av2-form-group">
-                                    <label><?php echo h($reassignFieldLabel); ?></label>
-                                    <select name="garage_id" required>
-                                        <option value="">Sélectionner un garage</option>
-                                        <?php foreach ($otherGarages as $g): ?>
-                                            <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
+                    <?php if ($offerInternal || $offerGarage): ?>
+                        <form method="POST" action="intervention_detail.php?id=<?php echo (int)$iv['id']; ?>" id="assignDetailForm">
+                            <input type="hidden" name="action" id="assignDetailAction" value="<?php echo $defaultMode === 'internal' ? 'assign_internal' : 'reassign_garage'; ?>">
+                            <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+
+                            <?php if ($offerInternal && $offerGarage): ?>
+                                <div class="av2-form-section">À qui confier cette demande ?</div>
+                                <div class="av2-choice-group">
+                                    <label class="av2-choice">
+                                        <input type="radio" name="assign_mode" value="internal" checked>
+                                        <span><strong>Un technicien SmartAutoTrack</strong><small>Avec un garage pour la réparation si besoin.</small></span>
+                                    </label>
+                                    <label class="av2-choice">
+                                        <input type="radio" name="assign_mode" value="garage">
+                                        <span><strong>Un garage partenaire</strong><small>Le garage affecte lui-même son technicien.</small></span>
+                                    </label>
                                 </div>
-                                <button type="submit" class="av2-btn-primary btn-confirm" data-confirm="<?php echo h($reassignConfirm); ?>" style="width:100%;"><?php echo h($reassignButtonLabel); ?></button>
-                            </form>
-                        <?php endif; ?>
-                    <?php else: ?>
+                            <?php endif; ?>
+
+                            <?php if ($offerInternal): ?>
+                                <div data-assign-panel="internal">
+                                    <div class="av2-form-group">
+                                        <label for="detailTechnicien">Technicien<span class="av2-required" aria-hidden="true">*</span></label>
+                                        <select name="technicien_id" id="detailTechnicien" required>
+                                            <option value="">Choisir un technicien</option>
+                                            <?php foreach ($techniciensInternes as $t): ?>
+                                                <option value="<?php echo (int)$t['id']; ?>"><?php echo h($t['prenom'] . ' ' . $t['nom'] . ($t['specialite'] ? ' — ' . $t['specialite'] : '')); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="av2-form-group">
+                                        <label for="detailSupportGarage">Garage (facultatif)</label>
+                                        <select name="support_garage_id" id="detailSupportGarage">
+                                            <option value="">Aucun garage</option>
+                                            <?php foreach ($supportGarages as $g): ?>
+                                                <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+
+                            <?php if ($offerGarage): ?>
+                                <div data-assign-panel="garage" <?php echo $defaultMode === 'garage' ? '' : 'hidden'; ?>>
+                                    <div class="av2-form-group">
+                                        <label for="detailGarage"><?php echo h($reassignFieldLabel); ?><span class="av2-required" aria-hidden="true">*</span></label>
+                                        <select name="garage_id" id="detailGarage" required <?php echo $defaultMode === 'garage' ? '' : 'disabled'; ?>>
+                                            <option value="">Choisir un garage</option>
+                                            <?php foreach ($otherGarages as $g): ?>
+                                                <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+
+                            <button type="submit" class="av2-btn-primary btn-confirm" id="assignDetailSubmit" style="width:100%;"
+                                    data-confirm="<?php echo h($defaultMode === 'internal' ? $internalConfirm : $reassignConfirm); ?>"
+                                    data-confirm-internal="<?php echo h($internalConfirm); ?>"
+                                    data-confirm-garage="<?php echo h($reassignConfirm); ?>"
+                                    data-label-internal="Affecter"
+                                    data-label-garage="<?php echo h($reassignButtonLabel); ?>"><?php echo h($defaultMode === 'internal' ? 'Affecter' : $reassignButtonLabel); ?></button>
+                        </form>
+                        <script>
+                        // Choix du destinataire : action envoyée, champs actifs, texte du bouton et de la confirmation.
+                        document.addEventListener('DOMContentLoaded', function () {
+                            var form = document.getElementById('assignDetailForm');
+                            var submit = document.getElementById('assignDetailSubmit');
+                            var actions = { internal: 'assign_internal', garage: 'reassign_garage' };
+                            form.querySelectorAll('input[name="assign_mode"]').forEach(function (radio) {
+                                radio.addEventListener('change', function () {
+                                    var mode = radio.value;
+                                    document.getElementById('assignDetailAction').value = actions[mode];
+                                    form.querySelectorAll('[data-assign-panel]').forEach(function (panel) {
+                                        var active = panel.getAttribute('data-assign-panel') === mode;
+                                        panel.hidden = !active;
+                                        panel.querySelectorAll('select').forEach(function (field) { field.disabled = !active; });
+                                    });
+                                    submit.setAttribute('data-confirm', submit.getAttribute('data-confirm-' + mode));
+                                    submit.textContent = submit.getAttribute('data-label-' + mode);
+                                });
+                            });
+                        });
+                        </script>
+                    <?php endif; ?>
+
+                    <?php if (!$canReassign && !$canAssignInternal): ?>
                         <div class="av2-empty">Cette intervention est <?php echo h(strtolower($statutLabels[$iv['statut']] ?? $iv['statut'])); ?> : elle ne peut plus être réaffectée.</div>
                     <?php endif; ?>
                 </div>

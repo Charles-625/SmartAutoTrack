@@ -409,36 +409,11 @@ include '../includes/header.php';
                                         <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
                                             <a href="intervention_detail.php?id=<?php echo (int)$iv['id']; ?>" class="av2-table-link">Détails</a>
                                             <?php if ($needsGarage): ?>
-                                                <form method="POST" action="interventions.php?action=assign_garage" style="display:flex; gap:6px;">
-                                                    <input type="hidden" name="intervention_id" value="<?php echo (int)$iv['id']; ?>">
-                                                    <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-                                                    <select name="garage_id" required style="font-size:12.5px; padding:5px 8px; border-radius:8px; border:1px solid #DDE0F0;">
-                                                        <option value="">Affecter à un garage...</option>
-                                                        <?php foreach ($garagesList as $g): ?>
-                                                            <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
-                                                        <?php endforeach; ?>
-                                                    </select>
-                                                    <button type="submit" class="av2-btn-primary av2-btn-xs">OK</button>
-                                                </form>
-                                                <?php if (!empty($techniciensInternes)): ?>
-                                                    <form method="POST" action="interventions.php?action=assign_internal" style="display:flex; flex-direction:column; gap:6px;">
-                                                        <input type="hidden" name="intervention_id" value="<?php echo (int)$iv['id']; ?>">
-                                                        <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-                                                        <select name="technicien_id" required aria-label="Technicien SmartAutoTrack" style="font-size:12.5px; padding:5px 8px; border-radius:8px; border:1px solid #DDE0F0;">
-                                                            <option value="">Technicien SmartAutoTrack...</option>
-                                                            <?php foreach ($techniciensInternes as $t): ?>
-                                                                <option value="<?php echo (int)$t['id']; ?>"><?php echo h($t['prenom'] . ' ' . $t['nom'] . ($t['specialite'] ? ' — ' . $t['specialite'] : '')); ?></option>
-                                                            <?php endforeach; ?>
-                                                        </select>
-                                                        <select name="support_garage_id" aria-label="Garage (facultatif)" style="font-size:12.5px; padding:5px 8px; border-radius:8px; border:1px solid #DDE0F0;">
-                                                            <option value="">Garage (facultatif)</option>
-                                                            <?php foreach ($garagesList as $g): ?>
-                                                                <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
-                                                            <?php endforeach; ?>
-                                                        </select>
-                                                        <button type="submit" class="av2-btn-primary av2-btn-xs">Affecter à un technicien interne</button>
-                                                    </form>
-                                                <?php endif; ?>
+                                                <?php // Une seule action par ligne : la fenêtre « Affecter la demande » (plus bas) propose les deux choix. ?>
+                                                <button type="button" class="av2-btn-primary av2-btn-xs js-open-assign"
+                                                        data-id="<?php echo (int)$iv['id']; ?>"
+                                                        data-summary="<?php echo h(($iv['type'] ?: 'Intervention') . ' — ' . $iv['marque'] . ' ' . $iv['modele'] . ' (' . $iv['immatriculation'] . ') — ' . $iv['client_prenom'] . ' ' . $iv['client_nom']); ?>"
+                                                        data-urgent="<?php echo $iv['anomalie_niveau'] === 'CRITIQUE' ? '1' : '0'; ?>">Affecter</button>
                                             <?php elseif (!empty($nextStatus[$iv['statut']])): ?>
                                                 <form method="POST" action="interventions.php?action=update_status&id=<?php echo (int)$iv['id']; ?>" style="display:flex; gap:6px;">
                                                     <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
@@ -499,8 +474,111 @@ include '../includes/header.php';
     </div>
 </div>
 
+<!-- Fenêtre « Affecter la demande » : un seul formulaire pour les deux façons
+     d'affecter une demande. Le choix du destinataire change l'action envoyée
+     (assign_internal ou assign_garage, traitées en haut de page) et seuls les
+     champs du choix courant sont actifs, donc envoyés et obligatoires. -->
+<div class="av2-modal-overlay" id="assignOverlay">
+    <div class="av2-modal" role="dialog" aria-modal="true" aria-labelledby="assignTitle">
+        <h3 id="assignTitle">Affecter la demande</h3>
+        <p class="av2-modal-sub" id="assignSummary"></p>
+        <p class="av2-alert error" id="assignUrgent" hidden style="margin-bottom:14px;">Urgent : anomalie critique, véhicule immobilisé ou dangereux.</p>
+        <form method="POST" id="assignForm" action="interventions.php?action=<?php echo empty($techniciensInternes) ? 'assign_garage' : 'assign_internal'; ?>">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+            <input type="hidden" name="intervention_id" id="assignInterventionId" value="">
+
+            <div class="av2-form-section">À qui confier cette demande ?</div>
+            <div class="av2-choice-group">
+                <label class="av2-choice">
+                    <input type="radio" name="assign_mode" value="internal" <?php echo empty($techniciensInternes) ? 'disabled' : 'checked'; ?>>
+                    <span><strong>Un technicien SmartAutoTrack</strong><small>Avec un garage pour la réparation si besoin.</small></span>
+                </label>
+                <label class="av2-choice">
+                    <input type="radio" name="assign_mode" value="garage" <?php echo empty($techniciensInternes) ? 'checked' : ''; ?>>
+                    <span><strong>Un garage partenaire</strong><small>Le garage affecte lui-même son technicien.</small></span>
+                </label>
+            </div>
+
+            <div data-assign-panel="internal">
+                <?php if (empty($techniciensInternes)): ?>
+                    <p class="av2-modal-sub">Aucun technicien SmartAutoTrack validé disponible.</p>
+                <?php else: ?>
+                    <div class="av2-form-group">
+                        <label for="assignTechnicien">Technicien<span class="av2-required" aria-hidden="true">*</span></label>
+                        <select name="technicien_id" id="assignTechnicien" required>
+                            <option value="">Choisir un technicien</option>
+                            <?php foreach ($techniciensInternes as $t): ?>
+                                <option value="<?php echo (int)$t['id']; ?>"><?php echo h($t['prenom'] . ' ' . $t['nom'] . ($t['specialite'] ? ' — ' . $t['specialite'] : '')); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="av2-form-group">
+                        <label for="assignSupportGarage">Garage (facultatif)</label>
+                        <select name="support_garage_id" id="assignSupportGarage">
+                            <option value="">Aucun garage</option>
+                            <?php foreach ($garagesList as $g): ?>
+                                <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <div data-assign-panel="garage">
+                <div class="av2-form-group">
+                    <label for="assignGarage">Garage<span class="av2-required" aria-hidden="true">*</span></label>
+                    <select name="garage_id" id="assignGarage" required>
+                        <option value="">Choisir un garage</option>
+                        <?php foreach ($garagesList as $g): ?>
+                            <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+
+            <div class="av2-modal-actions">
+                <button type="button" class="av2-btn-outline" id="closeAssign">Annuler</button>
+                <button type="submit" class="av2-btn-primary">Affecter</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // Fenêtre « Affecter la demande »
+    var assignOverlay = document.getElementById('assignOverlay');
+    var assignForm = document.getElementById('assignForm');
+    var actions = { internal: 'interventions.php?action=assign_internal', garage: 'interventions.php?action=assign_garage' };
+    function applyAssignMode() {
+        var checked = assignForm.querySelector('input[name="assign_mode"]:checked');
+        var mode = checked ? checked.value : 'garage';
+        assignForm.action = actions[mode];
+        // Champs du choix masqué : désactivés, donc ni obligatoires ni envoyés.
+        assignForm.querySelectorAll('[data-assign-panel]').forEach(function (panel) {
+            var active = panel.getAttribute('data-assign-panel') === mode;
+            panel.hidden = !active;
+            panel.querySelectorAll('select').forEach(function (field) { field.disabled = !active; });
+        });
+    }
+    assignForm.querySelectorAll('input[name="assign_mode"]').forEach(function (radio) {
+        radio.addEventListener('change', applyAssignMode);
+    });
+    document.querySelectorAll('.js-open-assign').forEach(function (button) {
+        button.addEventListener('click', function () {
+            assignForm.reset();
+            document.getElementById('assignInterventionId').value = button.getAttribute('data-id');
+            document.getElementById('assignSummary').textContent = button.getAttribute('data-summary');
+            document.getElementById('assignUrgent').hidden = button.getAttribute('data-urgent') !== '1';
+            applyAssignMode();
+            assignOverlay.classList.add('show');
+        });
+    });
+    document.getElementById('closeAssign').addEventListener('click', function () { assignOverlay.classList.remove('show'); });
+    assignOverlay.addEventListener('click', function (e) { if (e.target === assignOverlay) assignOverlay.classList.remove('show'); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') assignOverlay.classList.remove('show'); });
+    applyAssignMode();
+
     var overlay = document.getElementById('newInterventionOverlay');
     document.getElementById('openNewIntervention').addEventListener('click', function () { overlay.classList.add('show'); });
     document.getElementById('closeNewIntervention').addEventListener('click', function () { overlay.classList.remove('show'); });

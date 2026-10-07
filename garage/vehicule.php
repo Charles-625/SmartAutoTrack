@@ -102,11 +102,11 @@ include '../includes/header.php';
         <div class="gv2-card gv2-panel">
             <div class="gv2-panel-head"><h2>Informations du véhicule</h2></div>
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:16px;">
-                <div><div style="font-size:11px; color:#8AA0A3; text-transform:uppercase; letter-spacing:0.04em;">Immatriculation</div><div style="font-weight:700; margin-top:3px;"><?php echo h($vehicule['immatriculation']); ?></div></div>
-                <div><div style="font-size:11px; color:#8AA0A3; text-transform:uppercase; letter-spacing:0.04em;">Année</div><div style="font-weight:700; margin-top:3px;"><?php echo h($vehicule['annee'] ?: 'N/A'); ?></div></div>
-                <div><div style="font-size:11px; color:#8AA0A3; text-transform:uppercase; letter-spacing:0.04em;">Kilométrage</div><div style="font-weight:700; margin-top:3px;"><?php echo number_format((float)$vehicule['kilometrage'], 0, ',', ' '); ?> km</div></div>
-                <div><div style="font-size:11px; color:#8AA0A3; text-transform:uppercase; letter-spacing:0.04em;">Couleur</div><div style="font-weight:700; margin-top:3px;"><?php echo h($vehicule['couleur'] ?: 'N/A'); ?></div></div>
-                <div><div style="font-size:11px; color:#8AA0A3; text-transform:uppercase; letter-spacing:0.04em;">État</div><div style="margin-top:3px;"><span class="gv2-badge <?php echo $vehicule['statut'] === 'actif' ? 'ok' : 'warn'; ?>"><?php echo h(ucfirst(str_replace('_', ' ', $vehicule['statut']))); ?></span></div></div>
+                <div><div style="font-size:11px; color:#8B90B3; text-transform:uppercase; letter-spacing:0.04em;">Immatriculation</div><div style="font-weight:700; margin-top:3px;"><?php echo h($vehicule['immatriculation']); ?></div></div>
+                <div><div style="font-size:11px; color:#8B90B3; text-transform:uppercase; letter-spacing:0.04em;">Année</div><div style="font-weight:700; margin-top:3px;"><?php echo h($vehicule['annee'] ?: 'N/A'); ?></div></div>
+                <div><div style="font-size:11px; color:#8B90B3; text-transform:uppercase; letter-spacing:0.04em;">Kilométrage</div><div style="font-weight:700; margin-top:3px;"><?php echo number_format((float)$vehicule['kilometrage'], 0, ',', ' '); ?> km</div></div>
+                <div><div style="font-size:11px; color:#8B90B3; text-transform:uppercase; letter-spacing:0.04em;">Couleur</div><div style="font-weight:700; margin-top:3px;"><?php echo h($vehicule['couleur'] ?: 'N/A'); ?></div></div>
+                <div><div style="font-size:11px; color:#8B90B3; text-transform:uppercase; letter-spacing:0.04em;">État</div><div style="margin-top:3px;"><span class="gv2-badge <?php echo $vehicule['statut'] === 'actif' ? 'ok' : 'warn'; ?>"><?php echo h(ucfirst(str_replace('_', ' ', $vehicule['statut']))); ?></span></div></div>
             </div>
         </div>
 
@@ -161,7 +161,7 @@ include '../includes/header.php';
                             <?php foreach ($anomalies as $a): $isActive = in_array($a['statut'], ['NOUVELLE', 'EN_COURS'], true); ?>
                                 <div>
                                     <div style="font-size:13px; font-weight:600;"><?php echo h($a['description']); ?></div>
-                                    <div style="font-size:11.5px; color:#8AA0A3; margin-top:2px;"><?php echo h(date('d/m/Y', strtotime($a['dateDetection']))); ?> · <span class="gv2-badge <?php echo $isActive ? 'bad' : 'ok'; ?>"><?php echo $isActive ? 'Active' : 'Résolue'; ?></span></div>
+                                    <div style="font-size:11.5px; color:#8B90B3; margin-top:2px;"><?php echo h(date('d/m/Y', strtotime($a['dateDetection']))); ?> · <span class="gv2-badge <?php echo $isActive ? 'bad' : 'ok'; ?>"><?php echo $isActive ? 'Active' : 'Résolue'; ?></span></div>
                                 </div>
                             <?php endforeach; ?>
                         </div>

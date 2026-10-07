@@ -182,16 +182,16 @@ include '../includes/header.php';
                         <div style="display:flex; align-items:center; gap:6px; margin:14px 0;">
                             <?php foreach (['Planifiée' => 1, 'En cours' => 2, 'Terminée' => 3] as $label => $n): ?>
                                 <div style="display:flex; align-items:center; gap:6px; <?php echo $n < 3 ? 'flex-grow:1;' : ''; ?>">
-                                    <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; flex-shrink:0; <?php echo $step >= $n ? 'background:#0D9488; color:#fff;' : 'background:#EEF2F2; color:#8AA0A3;'; ?>"><?php echo (int)$n; ?></div>
-                                    <span style="font-size:11.5px; color:<?php echo $step >= $n ? '#12262A' : '#8AA0A3'; ?>; font-weight:<?php echo $step >= $n ? '700' : '500'; ?>;"><?php echo h($label); ?></span>
-                                    <?php if ($n < 3): ?><div style="flex-grow:1; height:2px; background:<?php echo $step > $n ? '#0D9488' : '#EEF2F2'; ?>;"></div><?php endif; ?>
+                                    <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; flex-shrink:0; <?php echo $step >= $n ? 'background:#3956E8; color:#fff;' : 'background:#EFF0F6; color:#8B90B3;'; ?>"><?php echo (int)$n; ?></div>
+                                    <span style="font-size:11.5px; color:<?php echo $step >= $n ? '#171B33' : '#8B90B3'; ?>; font-weight:<?php echo $step >= $n ? '700' : '500'; ?>;"><?php echo h($label); ?></span>
+                                    <?php if ($n < 3): ?><div style="flex-grow:1; height:2px; background:<?php echo $step > $n ? '#3956E8' : '#EFF0F6'; ?>;"></div><?php endif; ?>
                                 </div>
                             <?php endforeach; ?>
                         </div>
                         <?php endif; ?>
 
                         <?php if ($iv['description']): ?>
-                            <p style="margin:0 0 12px; font-size:13px; color:#5C7276; font-style:italic;"><?php echo h($iv['description']); ?></p>
+                            <p style="margin:0 0 12px; font-size:13px; color:#666C8E; font-style:italic;"><?php echo h($iv['description']); ?></p>
                         <?php endif; ?>
 
                         <div style="display:flex; gap:10px; flex-wrap:wrap;">

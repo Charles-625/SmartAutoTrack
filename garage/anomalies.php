@@ -198,7 +198,7 @@ include '../includes/header.php';
                         <tbody>
                             <?php foreach ($anomalies as $a): $isActive = in_array($a['statut'], ['NOUVELLE', 'EN_COURS'], true); $niveauBadge = $a['niveau'] === 'CRITIQUE' ? 'bad' : ($a['niveau'] === 'MOYEN' ? 'warn' : 'neutral'); ?>
                                 <tr>
-                                    <td><?php echo h($a['marque'] . ' ' . $a['modele']); ?><div style="font-size:11.5px; color:#8AA0A3;"><?php echo h($a['immatriculation']); ?></div></td>
+                                    <td><?php echo h($a['marque'] . ' ' . $a['modele']); ?><div style="font-size:11.5px; color:#8B90B3;"><?php echo h($a['immatriculation']); ?></div></td>
                                     <td><?php echo h($a['client_prenom'] . ' ' . $a['client_nom']); ?></td>
                                     <td style="max-width:240px;"><?php echo h($a['description']); ?></td>
                                     <td><span class="gv2-badge <?php echo h($niveauBadge); ?>"><?php echo h(ucfirst(strtolower($a['niveau']))); ?></span></td>

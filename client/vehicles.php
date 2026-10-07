@@ -435,7 +435,7 @@ include '../includes/header.php';
             ?>
                 <div class="v2-card v2-vehicle-card <?php echo $hasAnomaly ? 'has-anomaly' : ''; ?>" style="padding:16px;">
                     <div class="v2-vehicle-top">
-                        <div class="v2-vehicle-icon" style="background:<?php echo $hasAnomaly ? '#FDEDEE' : '#EEF1FF'; ?>;">
+                        <div class="v2-vehicle-icon" style="background:<?php echo $hasAnomaly ? '#FDEDEE' : '#F3F5FE'; ?>;">
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="2" y="10" width="20" height="8" rx="3" stroke="<?php echo $hasAnomaly ? '#E5484D' : '#3956E8'; ?>" stroke-width="1.6"/><circle cx="7.5" cy="18.5" r="1.5" stroke="<?php echo $hasAnomaly ? '#E5484D' : '#3956E8'; ?>" stroke-width="1.6"/><circle cx="16.5" cy="18.5" r="1.5" stroke="<?php echo $hasAnomaly ? '#E5484D' : '#3956E8'; ?>" stroke-width="1.6"/><path d="M5 10L7 5.5H17L19 10" stroke="<?php echo $hasAnomaly ? '#E5484D' : '#3956E8'; ?>" stroke-width="1.6" stroke-linejoin="round"/></svg>
                         </div>
                         <?php if ($hasAnomaly): ?>
