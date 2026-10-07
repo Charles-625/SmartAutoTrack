@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
@@ -24,7 +24,13 @@ $expectedState = $_SESSION['google_oauth_state'] ?? null;
 unset($_SESSION['google_oauth_state']);
 
 $receivedState = $_GET['state'] ?? '';
-if (empty($expectedState) || !hash_equals($expectedState, $receivedState)) {
+if (empty($expectedState)) {
+    // Session absente au retour : le cookie n'a pas suivi (autre adresse,
+    // casse du dossier différente, cookies bloqués) ou lien de retour rejoué.
+    error_log('[Google OAuth] state absent de la session au callback (cookie de session reçu : ' . (isset($_COOKIE[session_name()]) ? 'oui' : 'non') . ').');
+    redirect('auth/login.php?google_error=' . urlencode('Session introuvable au retour de Google. Ouvrez le site à l\'adresse ' . SITE_URL . 'auth/login.php (la même que l\'URI de redirection déclarée chez Google), vérifiez que les cookies sont autorisés, puis réessayez.'));
+}
+if (!hash_equals($expectedState, $receivedState)) {
     redirect('auth/login.php?google_error=' . urlencode('Session expirée ou requête invalide (erreur de jeton CSRF Google).'));
 }
 

@@ -13,7 +13,7 @@
  *   - coupe immédiatement la session d'un compte devenu inutilisable
  *     (enforceActiveSession(), exécutée à chaque requête).
  *
- * Les secrets (base, CamPay, Hugging Face) ne sont jamais ici : voir
+ * Les secrets (base, CamPay, OpenRouter) ne sont jamais ici : voir
  * appConfig() et config/local.example.php.
  */
 
@@ -93,7 +93,7 @@ if (isset($_COOKIE['PHPSESSID'])) {
  * est définie, sinon clé du tableau renvoyé par config/local.php (non versionné).
  * local.php n'est lu qu'une fois par requête (cache statique).
  *
- * @param string $key     Nom du paramètre (ex. 'CAMPAY_TOKEN', 'HF_MODEL').
+ * @param string $key     Nom du paramètre (ex. 'CAMPAY_TOKEN', 'OPENROUTER_MODEL').
  * @param mixed  $default Valeur renvoyée si le paramètre est absent.
  * @return mixed
  */

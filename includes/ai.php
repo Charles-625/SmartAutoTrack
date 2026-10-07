@@ -1,9 +1,9 @@
 <?php
 /**
- * Assistant IA (Hugging Face Inference Providers, API compatible OpenAI).
+ * Assistant IA (OpenRouter, API compatible OpenAI).
  *
- * Configuration : HF_TOKEN (jeton avec la permission « Make calls to
- * Inference Providers »), HF_MODEL, et facultativement HF_API_URL.
+ * Configuration : OPENROUTER_API_KEY (clé créée sur https://openrouter.ai/keys),
+ * OPENROUTER_MODEL, et facultativement OPENROUTER_API_URL.
  *
  * Le modèle ne reçoit que les données du périmètre de l'utilisateur connecté
  * (ses véhicules pour un client, des statistiques globales pour un admin).
@@ -33,9 +33,9 @@ const AI_MAX_MESSAGE_LENGTH = 1000;
 const AI_RATE_LIMIT = 20;            // messages par fenêtre
 const AI_RATE_WINDOW = 600;          // secondes
 
-/** L'assistant est utilisable seulement si un jeton Hugging Face est configuré. */
+/** L'assistant est utilisable seulement si une clé OpenRouter est configurée. */
 function aiIsConfigured(): bool {
-    return (string)appConfig('HF_TOKEN', '') !== '';
+    return trim((string)appConfig('OPENROUTER_API_KEY', '')) !== '';
 }
 
 /**
@@ -51,15 +51,20 @@ function aiIsConfigured(): bool {
  */
 function aiChat(array $messages, int $maxTokens = 700): string {
     if (!aiIsConfigured()) {
-        throw new AiException('L\'assistant IA n\'est pas configuré.', 'HF_TOKEN absent de la configuration.');
+        throw new AiException('L\'assistant IA n\'est pas configuré.', 'OPENROUTER_API_KEY absent de la configuration.');
     }
     try {
         $response = httpJsonRequest(
             'POST',
-            (string)appConfig('HF_API_URL', 'https://router.huggingface.co/v1/chat/completions'),
-            ['Authorization' => 'Bearer ' . appConfig('HF_TOKEN')],
+            (string)appConfig('OPENROUTER_API_URL', 'https://openrouter.ai/api/v1/chat/completions'),
             [
-                'model' => (string)appConfig('HF_MODEL', 'Qwen/Qwen2.5-7B-Instruct:fastest'),
+                'Authorization' => 'Bearer ' . trim((string)appConfig('OPENROUTER_API_KEY')),
+                // En-têtes facultatifs d'identification de l'application chez OpenRouter.
+                'HTTP-Referer' => SITE_URL,
+                'X-Title' => SITE_NAME,
+            ],
+            [
+                'model' => (string)appConfig('OPENROUTER_MODEL', 'meta-llama/llama-3.3-70b-instruct:free'),
                 'messages' => $messages,
                 'max_tokens' => $maxTokens,
                 'temperature' => 0.4,
@@ -77,12 +82,15 @@ function aiChat(array $messages, int $maxTokens = 700): string {
         $apiError = is_string($apiError) ? $apiError : json_encode($apiError);
         error_log('[SmartAutoTrack] IA : HTTP ' . $status . ' ' . substr($response['raw'], 0, 300));
         if ($status === 401 || $status === 403) {
-            throw new AiException('L\'assistant IA est momentanément indisponible.', 'Hugging Face refuse le jeton (HTTP ' . $status . ') : ' . $apiError . ' — créez un jeton avec la permission « Make calls to Inference Providers ».');
+            throw new AiException('L\'assistant IA est momentanément indisponible.', 'OpenRouter refuse la clé (HTTP ' . $status . ') : ' . $apiError . ' — vérifiez OPENROUTER_API_KEY (https://openrouter.ai/keys).');
+        }
+        if ($status === 402) {
+            throw new AiException('L\'assistant IA est momentanément indisponible.', 'Crédits OpenRouter insuffisants (HTTP 402) : ' . $apiError . ' — rechargez le compte ou choisissez un modèle gratuit (suffixe « :free ») dans OPENROUTER_MODEL.');
         }
         if ($status === 429) {
-            throw new AiException('L\'assistant IA reçoit trop de demandes. Réessayez dans un instant.', 'Quota Hugging Face atteint (HTTP 429).');
+            throw new AiException('L\'assistant IA reçoit trop de demandes. Réessayez dans un instant.', 'Quota OpenRouter atteint (HTTP 429) : ' . $apiError);
         }
-        throw new AiException('L\'assistant IA est momentanément indisponible.', 'Hugging Face : HTTP ' . $status . ' ' . $apiError);
+        throw new AiException('L\'assistant IA est momentanément indisponible.', 'OpenRouter : HTTP ' . $status . ' ' . $apiError);
     }
 
     $content = trim((string)($response['data']['choices'][0]['message']['content'] ?? ''));

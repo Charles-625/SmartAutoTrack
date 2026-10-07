@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Fonctions d'authentification Google OAuth 2.0.
  *
@@ -35,6 +35,43 @@ function getGoogleRedirectUri(): string {
         return trim($custom);
     }
     return SITE_URL . 'auth/google_callback.php';
+}
+
+/**
+ * Origine (schéma://hôte[:port]) d'une URL, en minuscules.
+ */
+function googleUrlOrigin(string $url): string {
+    $parts = parse_url($url);
+    if (empty($parts['scheme']) || empty($parts['host'])) {
+        return '';
+    }
+    $origin = strtolower($parts['scheme'] . '://' . $parts['host']);
+    return isset($parts['port']) ? $origin . ':' . $parts['port'] : $origin;
+}
+
+/**
+ * Le jeton « state » est gardé en session, dont le cookie n'est envoyé qu'au
+ * même hôte et sous BASE_PATH (sensible à la casse). Le retour de Google doit
+ * donc arriver sur la même origine que la page de départ, sinon la session est
+ * introuvable au callback. Renvoie l'URL de google_login.php sur l'origine de
+ * l'URI de redirection si l'utilisateur est ailleurs (ex. 127.0.0.1 au lieu de
+ * localhost), null sinon.
+ */
+function googleLoginUrlOnRedirectOrigin(string $currentOrigin): ?string {
+    $redirectOrigin = googleUrlOrigin(getGoogleRedirectUri());
+    if ($redirectOrigin === '' || $redirectOrigin === strtolower($currentOrigin)) {
+        return null;
+    }
+    return $redirectOrigin . BASE_PATH . 'auth/google_login.php';
+}
+
+/**
+ * Vrai si le chemin de l'URI de redirection est sous BASE_PATH (casse
+ * comprise) : sinon le cookie de session ne serait pas envoyé au callback.
+ */
+function googleRedirectPathMatchesBase(): bool {
+    $path = (string)parse_url(getGoogleRedirectUri(), PHP_URL_PATH);
+    return strpos($path, BASE_PATH) === 0;
 }
 
 /**

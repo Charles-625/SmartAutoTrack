@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * Service d'envoi d'emails transactionnels via l'API HTTP de Brevo (Sendinblue).
  *
