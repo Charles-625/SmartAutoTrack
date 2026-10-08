@@ -31,7 +31,7 @@ $sidebarUnread = activity_log_sidebar_counts($conn ?? null, ROLE_TECHNICIEN, (in
 ?>
 <aside class="tv2-sidebar">
     <div class="tv2-sidebar-logo">
-        <img src="<?php echo SITE_URL; ?>assets/img/logo-mark.png" alt="SmartAutoTrack" width="84" height="84">
+        <?php echo brand_lockup('dark'); ?>
     </div>
 
     <div class="tv2-nav-label">Mon espace</div>

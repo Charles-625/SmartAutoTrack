@@ -18,15 +18,17 @@ require_once '../includes/payments.php';
  *     (includes/repair_report.php), bornés ici à idGarage = mon garage. Dans
  *     une même transaction : réparation (TERMINEE), clôture de l'intervention,
  *     kilométrage et état du véhicule, résolution de ses anomalies ouvertes,
- *     rapport complet dans le journal et notification du client.
+ *     entretien coché (vidange, freins, pneus : table entretien, si
+ *     maintenanceReady()), rapport complet dans le journal et notification
+ *     du client.
  *   - GET action=new&intervention_id=… : ouvre directement le formulaire.
  * Paiement : colonne « Paiement » (seulement si paymentsReady()) pour chaque
  * réparation TERMINEE au coût non nul : « Payé » avec la date du paiement,
  * « Paiement en cours » (tentative EN_ATTENTE récente) ou « En attente de
  * paiement » (paymentStatesForRepairs(), includes/payments.php). Le garage
  * et le technicien sont aussi notifiés au paiement (paymentApplyCampayStatus()).
- * Tables : reparation, intervention, vehicule, anomalie, notifications
- *          (écriture, via repairReportClose()), utilisateur, paiement
+ * Tables : reparation, intervention, vehicule, anomalie, notifications,
+ *          entretien (écriture, via repairReportClose()), utilisateur, paiement
  *          (lecture), journalactivites (via log_activity()).
  */
 

@@ -17,8 +17,9 @@ require_once '../includes/payments.php';
  *     repairReportParse() puis repairReportClose() (includes/repair_report.php),
  *     bornés ici à idTechnicien = moi. Dans une même transaction : réparation
  *     (TERMINEE), clôture de l'intervention, kilométrage et état du véhicule,
- *     résolution de ses anomalies ouvertes, rapport complet dans le journal et
- *     notification du client.
+ *     résolution de ses anomalies ouvertes, entretien coché (vidange, freins,
+ *     pneus : table entretien, si maintenanceReady()), rapport complet dans le
+ *     journal et notification du client.
  *     Champ facultatif return=taches|interventions (liste blanche,
  *     repairReportReturnKey()) : envoyé par la fenêtre « Marquer terminée »
  *     de taches.php / interventions.php, on y revient après succès
@@ -29,8 +30,8 @@ require_once '../includes/payments.php';
  * « Paiement en cours » (tentative EN_ATTENTE récente) ou « En attente de
  * paiement » (paymentStatesForRepairs(), includes/payments.php). Le garage
  * et le technicien sont aussi notifiés au paiement (paymentApplyCampayStatus()).
- * Tables : reparation, intervention, vehicule, anomalie, notifications
- *          (écriture, via repairReportClose()), utilisateur, paiement
+ * Tables : reparation, intervention, vehicule, anomalie, notifications,
+ *          entretien (écriture, via repairReportClose()), utilisateur, paiement
  *          (lecture), journalactivites (via log_activity()).
  */
 

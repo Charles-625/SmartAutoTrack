@@ -2,18 +2,68 @@
 require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
+require_once '../includes/maintenance.php';
 
 /**
  * Fiche détaillée d'un véhicule du client.
  *
  * Accès : rôle client uniquement, et seulement pour ses propres véhicules :
  * un id absent ou appartenant à un autre client renvoie vers vehicles.php.
- * GET : id (identifiant du véhicule, obligatoire).
- * Lecture seule : les détails d'une anomalie ou d'une réparation sont chargés
- * en AJAX (ajax/get_anomaly_details.php, ajax/get_reparation_details.php).
- * Tables lues : vehicule, anomalie, reparation, intervention, utilisateur.
+ * GET : id (identifiant du véhicule, obligatoire, entier) ; success
+ * (dates | entretien | supprime : message après un enregistrement).
+ * Les détails d'une anomalie ou d'une réparation sont chargés en AJAX
+ * (ajax/get_anomaly_details.php, ajax/get_reparation_details.php).
+ *
+ * Section « Échéances et entretien » (seulement si maintenanceReady()) :
+ * tableau des échéances du véhicule (maintenanceVehicleSchedule() : assurance,
+ * visite technique, vidange, freins, pneus), historique des entretiens
+ * enregistrés (réparation ou déclaration du client) et trois formulaires,
+ * tous en POST + CSRF sur le véhicule dont la propriété est vérifiée plus
+ * haut, puis redirection (?success=…#echeances) :
+ *   form=maintenance_dates  : date d'expiration de l'assurance et date de la
+ *                             prochaine visite technique (vides = effacées ;
+ *                             maintenanceSetVehicleDates()) ;
+ *   form=maintenance_record : déclaration d'un entretien passé (type de
+ *                             MAINTENANCE_SERVICE_TYPES, date au plus
+ *                             aujourd'hui, kilométrage facultatif en chiffres
+ *                             et au plus celui du véhicule ; maintenanceRecord(),
+ *                             source CLIENT) ;
+ *   form=maintenance_delete : suppression d'un entretien déclaré par le client
+ *                             (source CLIENT uniquement ; ceux issus d'une
+ *                             réparation ne sont pas supprimables).
+ * « Aujourd'hui » est calculé en PHP (fuseau différent de MySQL).
+ * Tables lues : vehicule, anomalie, reparation, intervention, utilisateur,
+ * entretien, entretien_regle ; écrites : vehicule (dates d'échéance),
+ * entretien.
  */
 requireRole('client');
+
+/** Classe de badge (.v2-badge) et de pastille (.v2-due-dot) par statut d'échéance. */
+const VEHICLE_DUE_BADGES = ['overdue' => 'bad', 'soon' => 'warn', 'ok' => 'ok', 'unknown' => 'neutral'];
+
+/**
+ * Reste à courir d'une échéance, en texte brut (à échapper avec h()) :
+ * « dans 12 jours · reste 800 km », « dépassée de 3 jours », « à renseigner ».
+ *
+ * @param array $item Échéance (élément de maintenanceVehicleSchedule()).
+ * @return string
+ */
+function vehicleDueLeft(array $item): string {
+    if ($item['status'] === 'unknown') {
+        return 'À renseigner';
+    }
+    $parts = [];
+    $days = $item['daysLeft'];
+    if ($days !== null) {
+        $parts[] = $days > 0 ? 'dans ' . $days . ' jour' . ($days > 1 ? 's' : '')
+            : ($days === 0 ? "aujourd'hui" : 'dépassée de ' . -$days . ' jour' . ($days < -1 ? 's' : ''));
+    }
+    if ($item['kmLeft'] !== null) {
+        $parts[] = $item['kmLeft'] > 0 ? 'reste ' . maintenanceFormatKm((int)$item['kmLeft'])
+            : maintenanceFormatKm(-(int)$item['kmLeft']) . ' au-delà';
+    }
+    return ucfirst(implode(' · ', $parts));
+}
 
 $db = new Database();
 $conn = $db->getConnection();
@@ -28,10 +78,10 @@ $stmtBadge = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idClient = 
 $stmtBadge->execute([$_SESSION['user_id']]);
 $interventionsActivesCount = (int)$stmtBadge->fetchColumn();
 
-// Récupérer l'ID du véhicule
-$vehicle_id = $_GET['id'] ?? null;
+// Récupérer l'ID du véhicule (entier : la valeur est réaffichée dans des liens)
+$vehicle_id = (int)($_GET['id'] ?? 0);
 
-if (!$vehicle_id) {
+if ($vehicle_id <= 0) {
     header('Location: vehicles.php');
     exit;
 }
@@ -52,7 +102,96 @@ if (!$vehicle) {
 }
 
 // La propriété du véhicule est vérifiée ci-dessus : les requêtes suivantes
-// peuvent filtrer sur son seul identifiant.
+// (et les formulaires d'échéances) peuvent filtrer sur son seul identifiant.
+
+// Échéances et entretien : rien n'est lu ni écrit tant que la migration
+// (section 8) n'est pas appliquée.
+$today = date('Y-m-d');
+$maintenanceEnabled = maintenanceReady($conn);
+$dueErrors = [];
+$dueForm = (string)($_POST['form'] ?? '');
+if ($maintenanceEnabled && $_SERVER['REQUEST_METHOD'] === 'POST'
+    && in_array($dueForm, ['maintenance_dates', 'maintenance_record', 'maintenance_delete'], true)) {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        $dueErrors[] = 'Session expirée, merci de réessayer.';
+    } else {
+        try {
+            if ($dueForm === 'maintenance_dates') {
+                maintenanceSetVehicleDates($conn, $vehicle_id,
+                    (string)($_POST['dateExpirationAssurance'] ?? ''), (string)($_POST['dateProchaineVisiteTechnique'] ?? ''));
+                $dueSuccess = 'dates';
+            } elseif ($dueForm === 'maintenance_record') {
+                $dueDate = trim((string)($_POST['dateEntretien'] ?? ''));
+                $dueKmRaw = trim((string)($_POST['kilometrage'] ?? ''));
+                if ($dueDate === '') {
+                    throw new InvalidArgumentException('La date de l\'entretien est requise.');
+                }
+                if ($dueKmRaw !== '' && !validateDigitsOnly($dueKmRaw)) {
+                    throw new InvalidArgumentException('Le kilométrage ne doit contenir que des chiffres.');
+                }
+                if (strlen($dueKmRaw) > strlen((string)MAINTENANCE_MAX_KM)) {
+                    throw new InvalidArgumentException('Le kilométrage de l\'entretien est invalide.');
+                }
+                $dueKm = $dueKmRaw === '' ? null : (int)$dueKmRaw;
+                // Un entretien passé ne peut pas avoir eu lieu au-delà du
+                // kilométrage actuel : sinon les échéances seraient faussées.
+                if ($dueKm !== null && $vehicle['kilometrage'] !== null && $dueKm > (int)$vehicle['kilometrage']) {
+                    throw new InvalidArgumentException('Le kilométrage de l\'entretien dépasse celui du véhicule ('
+                        . maintenanceFormatKm((int)$vehicle['kilometrage']) . '). Mettez d\'abord à jour le kilométrage dans « Mes véhicules ».');
+                }
+                maintenanceRecord($conn, $vehicle_id, (string)($_POST['type'] ?? ''), $dueDate, $dueKm, 'CLIENT');
+                $dueSuccess = 'entretien';
+            } else {
+                $stmt = $conn->prepare("DELETE FROM entretien WHERE idEntretien = ? AND idVehicule = ? AND source = 'CLIENT'");
+                $stmt->execute([(int)($_POST['idEntretien'] ?? 0), $vehicle_id]);
+                if ($stmt->rowCount() !== 1) {
+                    throw new InvalidArgumentException('Cet entretien est introuvable ou ne peut pas être supprimé.');
+                }
+                $dueSuccess = 'supprime';
+            }
+            header('Location: vehicle_details.php?id=' . $vehicle_id . '&success=' . $dueSuccess . '#echeances');
+            exit;
+        } catch (InvalidArgumentException $e) {
+            $dueErrors[] = $e->getMessage();
+        } catch (Throwable $e) {
+            error_log('[SmartAutoTrack] échéances du véhicule ' . $vehicle_id . ' : ' . $e->getMessage());
+            $dueErrors[] = 'Erreur lors de l\'enregistrement. Merci de réessayer.';
+        }
+    }
+}
+$dueMessages = [
+    'dates' => 'Les dates d\'assurance et de visite technique sont enregistrées.',
+    'entretien' => 'L\'entretien est enregistré : les échéances sont recalculées.',
+    'supprime' => 'L\'entretien déclaré est supprimé.',
+];
+$dueSuccessMessage = is_string($_GET['success'] ?? null) ? ($dueMessages[$_GET['success']] ?? null) : null;
+
+$dueSchedule = [];
+$dueHistory = [];
+$dueRules = [];
+$dueCurrent = ['ASSURANCE' => null, 'VISITE_TECHNIQUE' => null];
+if ($maintenanceEnabled) {
+    $dueSchedule = maintenanceVehicleSchedule($conn, $vehicle_id, $today);
+    foreach ($dueSchedule as $item) {
+        if (array_key_exists($item['type'], $dueCurrent)) {
+            $dueCurrent[$item['type']] = $item['dueDate'];
+        }
+    }
+    $dueRules = maintenanceRules($conn);
+    $stmt = $conn->prepare("
+        SELECT e.idEntretien, e.type, e.dateEntretien, e.kilometrage, e.source, r.titre AS reparation_titre
+        FROM entretien e
+        LEFT JOIN reparation r ON r.idReparation = e.idReparation
+        WHERE e.idVehicule = ?
+        ORDER BY e.dateEntretien DESC, e.idEntretien DESC
+        LIMIT 30
+    ");
+    $stmt->execute([$vehicle_id]);
+    $dueHistory = $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+// Après une erreur, les champs reprennent la saisie du client.
+$dueOld = $dueErrors ? $_POST : [];
+
 // Récupérer les anomalies du véhicule
 $stmt = $conn->prepare("
     SELECT idAnomalie AS id, description, dateDetection AS date_detection, dateResolution AS date_resolution,
@@ -173,6 +312,170 @@ include '../includes/header.php';
         </div>
     </div>
 </div>
+
+<?php if ($maintenanceEnabled):
+    // Valeurs des formulaires : la saisie refusée est reproposée, sinon les
+    // dates enregistrées (assurance, visite) ou des champs vides (entretien).
+    $oldDates = $dueForm === 'maintenance_dates' ? $dueOld : [];
+    $oldRecord = $dueForm === 'maintenance_record' ? $dueOld : [];
+    $valAssurance = (string)($oldDates['dateExpirationAssurance'] ?? ($dueCurrent['ASSURANCE'] ?? ''));
+    $valVisite = (string)($oldDates['dateProchaineVisiteTechnique'] ?? ($dueCurrent['VISITE_TECHNIQUE'] ?? ''));
+?>
+<!-- Échéances et entretien -->
+<div class="v2-card v2-panel" id="echeances">
+    <div class="v2-panel-head">
+        <h2>Échéances et entretien</h2>
+    </div>
+    <?php if ($dueSuccessMessage !== null): ?>
+        <div class="v2-alert success" style="margin-bottom:14px;"><?php echo h($dueSuccessMessage); ?></div>
+    <?php endif; ?>
+    <?php foreach ($dueErrors as $err): ?>
+        <div class="v2-alert error" style="margin-bottom:14px;"><?php echo h($err); ?></div>
+    <?php endforeach; ?>
+
+    <div class="v2-table-wrap">
+        <table class="v2-table v2-due-table">
+            <thead>
+                <tr><th>Échéance</th><th>Statut</th><th>Prochaine échéance</th><th>Reste</th><th>Dernier entretien</th></tr>
+            </thead>
+            <tbody>
+                <?php foreach ($dueSchedule as $item):
+                    $dueClass = VEHICLE_DUE_BADGES[$item['status']];
+                    $isDateType = isset(MAINTENANCE_DATE_TYPES[$item['type']]);
+                ?>
+                    <tr>
+                        <td><strong><?php echo h($item['libelle']); ?></strong></td>
+                        <td>
+                            <span class="v2-due-status">
+                                <span class="v2-due-dot <?php echo h($dueClass); ?>" aria-hidden="true"></span>
+                                <span class="v2-badge <?php echo h($dueClass); ?>"><?php echo h($item['status'] === 'unknown' ? 'À renseigner' : MAINTENANCE_STATUS_LABELS[$item['status']]); ?></span>
+                            </span>
+                        </td>
+                        <td>
+                            <?php if ($item['dueDate'] !== null): ?>
+                                <?php echo h(maintenanceFormatDate($item['dueDate'])); ?>
+                                <?php if ($item['dueKm'] !== null): ?><small>ou à <?php echo h(maintenanceFormatKm((int)$item['dueKm'])); ?></small><?php endif; ?>
+                            <?php else: ?>
+                                —
+                            <?php endif; ?>
+                        </td>
+                        <td><?php echo h(vehicleDueLeft($item)); ?></td>
+                        <td>
+                            <?php if ($isDateType): ?>
+                                <?php if ($item['dueDate'] === null): ?><small style="margin:0;">Saisissez la date ci-dessous</small><?php else: ?>—<?php endif; ?>
+                            <?php elseif ($item['lastDate'] !== null): ?>
+                                <?php echo h(maintenanceFormatDate($item['lastDate'])); ?>
+                                <?php if ($item['lastKm'] !== null): ?><small>à <?php echo h(maintenanceFormatKm((int)$item['lastKm'])); ?></small><?php endif; ?>
+                            <?php else: ?>
+                                <small style="margin:0;">Aucun — déclarez-le ci-dessous</small>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+    // Règles en vigueur (modifiables par l'admin), pour que le client
+    // comprenne le calcul : « Vidange : tous les 5 000 km ou 6 mois ».
+    $ruleTexts = [];
+    foreach ($dueRules as $type => $rule) {
+        if (!empty($rule['actif'])) {
+            $ruleTexts[] = MAINTENANCE_SERVICE_TYPES[$type] . ' : tous les '
+                . ($rule['intervalleKm'] !== null ? maintenanceFormatKm((int)$rule['intervalleKm']) . ' ou ' : '')
+                . (int)$rule['intervalleMois'] . ' mois';
+        }
+    }
+    ?>
+    <?php if ($ruleTexts): ?>
+        <p class="v2-note">Calcul à partir du dernier entretien, au premier des deux seuils atteint (conditions de route camerounaises) — <?php echo h(implode(' ; ', $ruleTexts)); ?>.</p>
+    <?php endif; ?>
+
+    <div class="v2-due-forms">
+        <form method="POST" action="vehicle_details.php?id=<?php echo (int)$vehicle_id; ?>#echeances" class="v2-due-form">
+            <input type="hidden" name="form" value="maintenance_dates">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+            <h3>Assurance et visite technique</h3>
+            <p class="v2-note">Reportez les dates de votre attestation d'assurance et de votre certificat de visite technique. Laissez vide pour effacer.</p>
+            <div class="v2-form-group">
+                <label for="dueAssurance">Date d'expiration de l'assurance</label>
+                <input type="date" id="dueAssurance" name="dateExpirationAssurance" placeholder="Ex. 31/03/2027" value="<?php echo h($valAssurance); ?>">
+            </div>
+            <div class="v2-form-group">
+                <label for="dueVisite">Date de la prochaine visite technique</label>
+                <input type="date" id="dueVisite" name="dateProchaineVisiteTechnique" placeholder="Ex. 15/06/2027" value="<?php echo h($valVisite); ?>">
+            </div>
+            <button type="submit" class="v2-btn-primary">Enregistrer les dates</button>
+        </form>
+
+        <form method="POST" action="vehicle_details.php?id=<?php echo (int)$vehicle_id; ?>#echeances" class="v2-due-form">
+            <input type="hidden" name="form" value="maintenance_record">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+            <h3>Déclarer un entretien passé</h3>
+            <p class="v2-note">Un entretien fait hors de la plateforme : il sert de point de départ au calcul de la prochaine échéance.</p>
+            <div class="v2-form-group">
+                <label for="dueType">Entretien</label>
+                <select id="dueType" name="type" required>
+                    <?php foreach (MAINTENANCE_SERVICE_TYPES as $type => $label): ?>
+                        <option value="<?php echo h($type); ?>" <?php echo ($oldRecord['type'] ?? '') === $type ? 'selected' : ''; ?>><?php echo h($label); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="v2-form-group">
+                <label for="dueDate">Date de l'entretien</label>
+                <input type="date" id="dueDate" name="dateEntretien" required max="<?php echo h($today); ?>" placeholder="Ex. 15/09/2026" value="<?php echo h((string)($oldRecord['dateEntretien'] ?? '')); ?>">
+            </div>
+            <div class="v2-form-group">
+                <label for="dueKm">Kilométrage relevé (facultatif)</label>
+                <input type="number" id="dueKm" name="kilometrage" data-only="digits" inputmode="numeric" min="0" max="<?php echo (int)MAINTENANCE_MAX_KM; ?>" placeholder="Ex. 85000" value="<?php echo h((string)($oldRecord['kilometrage'] ?? '')); ?>">
+            </div>
+            <button type="submit" class="v2-btn-primary">Déclarer l'entretien</button>
+        </form>
+    </div>
+
+    <div class="v2-due-history">
+        <h3>Entretiens enregistrés</h3>
+        <?php if (empty($dueHistory)): ?>
+            <div class="v2-empty" style="padding:14px 4px;">Aucun entretien enregistré pour ce véhicule.</div>
+        <?php else: ?>
+            <div class="v2-table-wrap">
+                <table class="v2-table v2-due-table">
+                    <thead>
+                        <tr><th>Date</th><th>Entretien</th><th>Kilométrage</th><th>Origine</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($dueHistory as $row): ?>
+                            <tr>
+                                <td><?php echo h(maintenanceFormatDate((string)$row['dateEntretien'])); ?></td>
+                                <td><?php echo h(MAINTENANCE_SERVICE_TYPES[$row['type']] ?? $row['type']); ?></td>
+                                <td><?php echo h($row['kilometrage'] === null ? '—' : maintenanceFormatKm((int)$row['kilometrage'])); ?></td>
+                                <td>
+                                    <?php if ($row['source'] === 'REPARATION'): ?>
+                                        <span class="v2-badge ok">Réparation</span>
+                                        <?php if ($row['reparation_titre']): ?><small><?php echo h($row['reparation_titre']); ?></small><?php endif; ?>
+                                    <?php else: ?>
+                                        <span class="v2-badge neutral">Déclaration</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if ($row['source'] === 'CLIENT'): ?>
+                                        <form method="POST" action="vehicle_details.php?id=<?php echo (int)$vehicle_id; ?>#echeances" onsubmit="return confirm('Supprimer cet entretien déclaré ?');">
+                                            <input type="hidden" name="form" value="maintenance_delete">
+                                            <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+                                            <input type="hidden" name="idEntretien" value="<?php echo (int)$row['idEntretien']; ?>">
+                                            <button type="submit" class="v2-due-delete">Supprimer</button>
+                                        </form>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- Statistiques -->
 <div class="stats-grid">
@@ -671,7 +974,7 @@ function displayReparationDetails(reparation) {
                 <div class="detail-grid">
                     <div class="detail-item">
                         <label>Titre :</label>
-                        <span>${reparation.titre || 'Réparation #' + reparation.id}</span>
+                        <span>${SmartAutoTrack.utils.escapeHtml(reparation.titre || 'Réparation #' + reparation.id)}</span>
                     </div>
                     <div class="detail-item">
                         <label>Statut :</label>

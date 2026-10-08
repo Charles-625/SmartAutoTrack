@@ -100,7 +100,7 @@ include '../includes/header.php';
 
         <div class="authv2-card">
             <div class="authv2-logo-wrap">
-                <img src="<?php echo SITE_URL; ?>assets/img/logo.png" alt="<?php echo SITE_NAME; ?>">
+                <img src="<?php echo SITE_URL; ?>assets/img/brand/sat-mark.svg" alt="<?php echo SITE_NAME; ?>">
             </div>
 
             <h1>Mot de passe oublié</h1>

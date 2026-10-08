@@ -245,7 +245,8 @@ CamPay est considéré comme configuré si `CAMPAY_SIMULATION` est vrai, ou si `
 | Clé | Rôle | Défaut |
 |---|---|---|
 | `OPENROUTER_API_KEY` | Clé OpenRouter (`sk-or-v1-...`, créée sur https://openrouter.ai/keys). Sans clé, l'assistant s'affiche comme indisponible | *(vide)* |
-| `OPENROUTER_MODEL` | Modèle utilisé (identifiant de https://openrouter.ai/models ; suffixe `:free` = gratuit) | `meta-llama/llama-3.3-70b-instruct:free` |
+| `OPENROUTER_MODEL` | Modèle principal (identifiant de https://openrouter.ai/models ; suffixe `:free` = gratuit) | `nvidia/nemotron-3-super-120b-a12b:free` |
+| `OPENROUTER_FALLBACK_MODELS` | Modèles de secours séparés par des virgules, essayés dans l'ordre si le principal est saturé (429), retiré (404), réservé (403), en panne ou muet ; une clé refusée (401) arrête tout. 4 modèles au plus | *(vide)* |
 | `OPENROUTER_API_URL` | Point d'accès, compatible OpenAI | `https://openrouter.ai/api/v1/chat/completions` |
 
 ### Divers
@@ -392,7 +393,7 @@ Sans Composer global, utilisez `php composer.phar test`, ou lancez `php vendor/b
 | Technicien ou garage ne peut pas se connecter | Son statut n'est pas `VALIDE`. Validez-le (ou réactivez-le) depuis l'espace administrateur. Un garage peut aussi réactiver un technicien de son équipe qu'il a suspendu. |
 | Bouton de paiement absent | La réparation n'est pas `TERMINEE`, son coût vaut 0, ou la table `paiement` n'est pas prête (`migrate_structure.php --apply`). |
 | Paiement refusé en démo | Vérifiez `CAMPAY_DEMO_MAX_AMOUNT` (25 ou moins) et les identifiants CamPay. Pour travailler hors ligne, utilisez `CAMPAY_SIMULATION=true`. |
-| Assistant « indisponible » | `OPENROUTER_API_KEY` est absente ou invalide, le compte n'a plus de crédits (HTTP 402) ou le modèle choisi n'existe plus. Le détail exact s'affiche à l'administrateur dans le chat. |
+| Assistant « indisponible » | `OPENROUTER_API_KEY` est absente ou invalide, ou aucun des modèles (`OPENROUTER_MODEL` puis `OPENROUTER_FALLBACK_MODELS`) n'a répondu : modèles gratuits saturés ou retirés, ou plus de crédits (HTTP 402) pour un modèle payant. Le détail exact s'affiche à l'administrateur dans le chat. |
 | Google : « Erreur 400 : redirect_uri_mismatch » | L'URL de retour envoyée à Google n'est pas déclarée dans Google Cloud Console (Identifiants → client OAuth → « URI de redirection autorisés »). Ajoutez-y exactement `SITE_URL` + `auth/google_callback.php` (ex. `http://localhost/HCH/auth/google_callback.php`), même schéma, même hôte (`localhost` ≠ `127.0.0.1`), même port, même dossier. Ou fixez-la avec `GOOGLE_REDIRECT_URI`. |
 | Envoi de documents en échec | Seuls PDF, JPG et PNG de 5 Mo au plus sont acceptés. Vérifiez que `uploads/` est accessible en écriture et que `upload_max_filesize` et `post_max_size` sont suffisants dans `php.ini`. |
 | Un changement de CSS ou JS ne s'affiche pas | Rechargement forcé (Ctrl+F5). Les fichiers statiques sont revalidés par ETag. |

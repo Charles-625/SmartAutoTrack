@@ -7,8 +7,8 @@
  * Variables attendues avant l'include :
  *   $activeNav   'dashboard'|'clients'|'garages'|'techniciens'|'vehicules'|
  *                'interventions'|'reparations'|'anomalies'|'abonnements'|
- *                'transactions'|'statistiques'|'journal'|'assistant'|
- *                'messages'|'profil'|'parametres'
+ *                'transactions'|'entretien'|'statistiques'|'journal'|
+ *                'assistant'|'messages'|'profil'|'parametres'
  *   $garagesEnAttenteBadge (int, optionnel) nombre de garages à valider
  * Pastilles rouges de nouveautés (onglets
  * « Journal d'activité » et « Interventions ») :
@@ -32,7 +32,7 @@ $sidebarUnread = activity_log_sidebar_counts($conn ?? null, ROLE_ADMIN, (int)($_
 ?>
 <aside class="av2-sidebar">
     <div class="av2-sidebar-logo">
-        <img src="<?php echo SITE_URL; ?>assets/img/logo-mark.png" alt="SmartAutoTrack" width="84" height="84">
+        <?php echo brand_lockup('dark'); ?>
     </div>
 
     <div class="av2-nav-label">Supervision</div>
@@ -86,6 +86,10 @@ $sidebarUnread = activity_log_sidebar_counts($conn ?? null, ROLE_ADMIN, (int)($_
         <a href="<?php echo SITE_URL; ?>admin/transactions.php" class="av2-navitem <?php echo $navActive('transactions'); ?>">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M7 8H21M7 8L10 5M7 8L10 11" stroke="#DEE1F5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 16H3M17 16L14 13M17 16L14 19" stroke="#DEE1F5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span class="label">Transactions</span>
+        </a>
+        <a href="<?php echo SITE_URL; ?>admin/entretien.php" class="av2-navitem <?php echo $navActive('entretien'); ?>">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="2" stroke="#DEE1F5" stroke-width="1.8"/><path d="M3 10H21M8 3V7M16 3V7" stroke="#DEE1F5" stroke-width="1.8" stroke-linecap="round"/><path d="M12 13V16L14 17.5" stroke="#DEE1F5" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <span class="label">Entretien &amp; rappels</span>
         </a>
     </nav>
 

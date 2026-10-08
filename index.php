@@ -28,8 +28,7 @@ include 'includes/header.php';
 <nav class="homev2-nav">
     <div class="homev2-container homev2-nav-inner">
         <div class="homev2-nav-brand">
-            <img src="<?php echo SITE_URL; ?>assets/img/logo.png" alt="<?php echo SITE_NAME; ?>">
-            <span>SmartAutoTrack</span>
+            <?php echo brand_lockup('light', 'lg'); ?>
         </div>
         <div class="homev2-nav-links" id="homeNavLinks">
             <a href="#solution">Solution</a>
@@ -309,8 +308,7 @@ include 'includes/header.php';
 <footer class="homev2-footer">
     <div class="homev2-container homev2-footer-inner">
         <div class="homev2-footer-brand">
-            <img src="<?php echo SITE_URL; ?>assets/img/logo.png" alt="<?php echo SITE_NAME; ?>">
-            <span>SmartAutoTrack</span>
+            <?php echo brand_lockup('light', 'sm'); ?>
         </div>
         <div class="homev2-footer-copy">&copy; <?php echo date('Y'); ?> SmartAutoTrack — Suivi &amp; entretien automobile après-vente.</div>
     </div>

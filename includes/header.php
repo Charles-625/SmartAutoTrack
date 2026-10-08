@@ -37,6 +37,11 @@ $showNavbar = $isLoggedIn && empty($hideNavbar);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo h(isset($pageTitle) ? $pageTitle . ' - ' . SITE_NAME : SITE_NAME); ?></title>
     
+    <!-- Icône de l'onglet (nouveau logo) : SVG pour les navigateurs récents, PNG en secours et pour l'écran d'accueil iOS -->
+    <link rel="icon" type="image/svg+xml" href="<?php echo SITE_URL; ?>assets/img/brand/sat-short.svg">
+    <link rel="icon" type="image/png" sizes="512x512" href="<?php echo SITE_URL; ?>assets/img/brand/sat-short-512.png">
+    <link rel="apple-touch-icon" href="<?php echo SITE_URL; ?>assets/img/brand/sat-short-512.png">
+
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -91,10 +96,10 @@ $showNavbar = $isLoggedIn && empty($hideNavbar);
     <nav class="navbar">
         <div class="navbar-brand">
             <?php 
-            $logoFilePath = __DIR__ . '/../assets/img/logo.png';
+            $logoFilePath = __DIR__ . '/../assets/img/brand/sat-mark.svg';
             if (file_exists($logoFilePath)) {
             ?>
-                <img class="navbar-logo" src="<?php echo SITE_URL; ?>assets/img/logo.png" alt="<?php echo SITE_NAME; ?>">
+                <img class="navbar-logo" src="<?php echo SITE_URL; ?>assets/img/brand/sat-mark.svg" alt="<?php echo SITE_NAME; ?>">
             <?php } else { ?>
                 <i class="fas fa-car"></i>
             <?php } ?>

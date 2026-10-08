@@ -43,7 +43,7 @@
 .av2-nav-backdrop { display: none; position: fixed; inset: 0; background: rgba(15,18,38,0.5); z-index: 290; }
 .av2-nav-backdrop.is-open { display: block; }
 body.nav-open { overflow: hidden; }
-.av2-sidebar-logo { display: flex; align-items: center; justify-content: center; padding: 4px 8px 16px 8px; border-bottom: 1px solid rgba(255,255,255,0.14); margin-bottom: 14px; }
+.av2-sidebar-logo { display: flex; align-items: center; justify-content: center; padding: 4px 0 16px 0; border-bottom: 1px solid rgba(255,255,255,0.14); margin-bottom: 14px; }
 .av2-sidebar-logo img { display: block; }
 .av2-nav-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; color: rgba(255,255,255,0.45); text-transform: uppercase; padding: 12px 10px 6px; }
 .av2-nav-label:first-of-type { padding-top: 0; }

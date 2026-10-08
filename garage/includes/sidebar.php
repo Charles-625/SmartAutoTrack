@@ -31,7 +31,7 @@ $sidebarUnread = activity_log_sidebar_counts($conn ?? null, ROLE_GARAGE, (int)($
 ?>
 <aside class="gv2-sidebar">
     <div class="gv2-sidebar-logo">
-        <img src="<?php echo SITE_URL; ?>assets/img/logo-mark.png" alt="SmartAutoTrack" width="84" height="84">
+        <?php echo brand_lockup('dark'); ?>
     </div>
 
     <div class="gv2-nav-label">Mon espace</div>

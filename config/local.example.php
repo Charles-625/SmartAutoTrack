@@ -23,7 +23,9 @@ return [
 
     // Assistant IA (OpenRouter, https://openrouter.ai)
     'OPENROUTER_API_KEY' => '',         // clé sk-or-v1-... créée sur https://openrouter.ai/keys
-    'OPENROUTER_MODEL' => 'meta-llama/llama-3.3-70b-instruct:free', // tout identifiant de https://openrouter.ai/models
+    'OPENROUTER_MODEL' => 'nvidia/nemotron-3-super-120b-a12b:free', // tout identifiant de https://openrouter.ai/models (gratuit : suffixe « :free »)
+    // Modèles de secours, séparés par des virgules, essayés dans l'ordre si le principal est saturé ou retiré.
+    'OPENROUTER_FALLBACK_MODELS' => 'nvidia/nemotron-3-ultra-550b-a55b:free,google/gemma-4-31b-it:free',
 
     // Envoi d'emails transactionnels (Brevo / Sendinblue)
     'BREVO_API_KEY' => '',              // Clé API v3 (xkeysib-...)

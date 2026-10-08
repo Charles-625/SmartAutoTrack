@@ -9,7 +9,8 @@
  *   - démarre la session (cookie HCHSESSID limité à BASE_PATH) ;
  *   - fournit les fonctions transverses : contrôle d'accès, CSRF, échappement,
  *     validations serveur des formulaires, hachage des mots de passe ;
- *   - charge includes/password_policy.php et includes/activity_log.php ;
+ *   - charge includes/password_policy.php, includes/activity_log.php et
+ *     includes/brand.php (brand_lockup(), logo + nom) ;
  *   - coupe immédiatement la session d'un compte devenu inutilisable
  *     (enforceActiveSession(), exécutée à chaque requête).
  *
@@ -293,6 +294,7 @@ function verifyPassword($password, $hash) {
 }
 
 require_once __DIR__ . '/../includes/activity_log.php';
+require_once __DIR__ . '/../includes/brand.php';
 
 /**
  * Déconnexion complète : vide la session, expire son cookie et supprime au

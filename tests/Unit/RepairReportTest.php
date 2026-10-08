@@ -5,8 +5,8 @@ require_once __DIR__ . '/../../includes/repair_report.php';
 
 /**
  * Rapport de fin d'intervention (includes/repair_report.php) : fonctions pures
- * de validation (repairReportParse), de mise en forme (repairReportCompose,
- * repairReportKmError), repérage du rapport dans le journal
+ * de validation (repairReportParse, dont les cases « Entretien effectué »),
+ * de mise en forme (repairReportCompose, repairReportKmError), repérage du rapport dans le journal
  * (activity_log_is_report) et liste blanche de la page de retour.
  */
 final class RepairReportTest extends TestCase
@@ -78,6 +78,27 @@ final class RepairReportTest extends TestCase
 			'État du véhicule : À surveiller',
 			'Recommandations : Contrôler les disques',
 		]), repairReportCompose($data));
+	}
+
+	public function testEntretienIsOptionalAndWhitelisted(): void
+	{
+		$this->assertSame([], repairReportParse($this->validPost())['data']['entretien']);
+		$this->assertSame([], repairReportParse($this->validPost(['entretien' => 'VIDANGE']))['data']['entretien']);
+		$parsed = repairReportParse($this->validPost(['entretien' => ['PNEUS', 'vidange', 'ASSURANCE', 'VIDANGE', 'PNEUS', ['FREINS']]]));
+		$this->assertSame([], $parsed['errors']);
+		// Ordre de REPAIR_MAINTENANCE_CHECKS, sans doublon ni valeur inconnue.
+		$this->assertSame(['VIDANGE', 'PNEUS'], $parsed['data']['entretien']);
+		foreach (array_keys(REPAIR_MAINTENANCE_CHECKS) as $type) {
+			$this->assertArrayHasKey($type, MAINTENANCE_SERVICE_TYPES);
+		}
+	}
+
+	public function testComposeListsMaintenanceDone(): void
+	{
+		$data = repairReportParse($this->validPost(['entretien' => ['FREINS', 'VIDANGE']]))['data'];
+		$this->assertStringContainsString("État du véhicule : Bon
+Entretien : Vidange, Contrôle des freins", repairReportCompose($data));
+		$this->assertStringNotContainsString('Entretien', repairReportCompose(repairReportParse($this->validPost())['data']));
 	}
 
 	public function testComposeOmitsEmptyLines(): void

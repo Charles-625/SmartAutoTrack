@@ -5,19 +5,31 @@ require_once '../config/roles.php';
 require_once 'includes/helpers.php';
 require_once '../includes/subscription.php';
 require_once '../includes/payments.php';
+require_once '../includes/maintenance.php';
 
 /**
  * Tableau de bord de l'espace client (particulier ou entreprise).
  *
  * Accès : rôle client uniquement.
- * Lecture seule : aucune action POST/GET n'est traitée ici.
+ * Aucune action POST/GET n'est traitée ici.
  * Affiche : véhicules et leur anomalie active la plus récente, interventions
  * actives (5 max), dernières réparations terminées, messages non lus et
  * aperçu des notifications.
+ * Encart « Prochaines échéances » (tous les clients, si maintenanceReady()) :
+ * les DASHBOARD_DUE_LIMIT échéances les plus urgentes de tous ses véhicules
+ * (assurance, visite technique, vidange, freins, pneus ;
+ * maintenanceClientSchedule()), avec pastille de statut et lien vers la fiche
+ * du véhicule ; pour un client gratuit, une ligne vers abonnement.php
+ * (rappels automatiques réservés à Premium).
+ * Client Premium : au premier affichage du jour, maintenanceSendReminders()
+ * est lancé pour CE client (date mémorisée en session, erreurs seulement
+ * journalisées), pour qu'il reçoive ses rappels même sans tâche planifiée
+ * (scripts/send_reminders.php) ; écrit alors notifications et rappel_envoye.
  * Interventions : « qui s'occupe » via v2_intervention_handler() (SmartAutoTrack
  * et son technicien interne, garage partenaire en appui, ou garage seul).
  * Tables lues : vehicule, anomalie, intervention, garage, utilisateur, technicien,
  * reparation, messages, notifications (et entreprise via getUserProfile()),
+ * entretien, entretien_regle (échéances, via includes/maintenance.php),
  * abonnement (encart « Votre abonnement » : GRATUIT ou PREMIUM via clientIsPremium()),
  * paiement (encart « X réparation(s) à payer — total Y XAF » : réparations
  * TERMINEE au coût non nul sans paiement PAYE ni tentative EN_ATTENTE récente
@@ -28,8 +40,43 @@ require_once '../includes/payments.php';
  */
 requireRole('client');
 
+/** Nombre d'échéances affichées dans l'encart « Prochaines échéances ». */
+const DASHBOARD_DUE_LIMIT = 6;
+
+/** Classe de badge (.v2-badge) et de pastille (.v2-due-dot) par statut d'échéance. */
+const DASHBOARD_DUE_BADGES = ['overdue' => 'bad', 'soon' => 'warn', 'ok' => 'ok', 'unknown' => 'neutral'];
+
+/**
+ * Texte court du reste à courir d'une échéance (texte brut, à échapper avec
+ * h()) : « dans 12 jours — 19/10/2026 · reste 800 km », « dépassée de
+ * 3 jours — 04/10/2026 », « à renseigner »…
+ *
+ * @param array $item Échéance (élément de maintenanceClientSchedule()['echeances']).
+ * @return string
+ */
+function dashboardDueText(array $item): string {
+    if ($item['status'] === 'unknown') {
+        return isset(MAINTENANCE_DATE_TYPES[$item['type']]) ? 'Date à renseigner' : 'Aucun entretien enregistré — à renseigner';
+    }
+    $parts = [];
+    $days = $item['daysLeft'];
+    if ($item['dueDate'] !== null && $days !== null) {
+        $date = maintenanceFormatDate((string)$item['dueDate']);
+        $parts[] = $days > 0 ? 'dans ' . $days . ' jour' . ($days > 1 ? 's' : '') . ' — ' . $date
+            : ($days === 0 ? "aujourd'hui — " . $date : 'dépassée de ' . -$days . ' jour' . ($days < -1 ? 's' : '') . ' — ' . $date);
+    }
+    if ($item['kmLeft'] !== null) {
+        $parts[] = $item['kmLeft'] > 0 ? 'reste ' . maintenanceFormatKm((int)$item['kmLeft'])
+            : maintenanceFormatKm(-(int)$item['kmLeft']) . ' au-delà';
+    } elseif ($item['dueKm'] !== null) {
+        $parts[] = 'ou à ' . maintenanceFormatKm((int)$item['dueKm']);
+    }
+    return ucfirst(implode(' · ', $parts));
+}
+
 $db = new Database();
 $conn = $db->getConnection();
+$clientId = (int)$_SESSION['user_id'];
 
 // Profil du client connecté : le type (PARTICULIER/ENTREPRISE) règle les
 // libellés et la variante de la sidebar.
@@ -155,6 +202,43 @@ $aPayerTotal = array_sum(array_map(fn($r) => (int)round((float)$r['cout']), $aPa
 $stmt = $conn->prepare("SELECT COUNT(*) FROM messages WHERE destinataire_id = ? AND lu = 'non'");
 $stmt->execute([$_SESSION['user_id']]);
 $messagesNonLus = (int)$stmt->fetchColumn();
+
+// Échéances des véhicules. « Aujourd'hui » est calculé en PHP : PHP et MySQL
+// n'ont pas le même fuseau sur ce serveur. Sans la migration (section 8),
+// maintenanceReady() est faux : ni encart, ni rappel.
+$today = date('Y-m-d');
+$maintenanceEnabled = maintenanceReady($conn);
+$dashboardPremium = clientIsPremium($conn, $clientId);
+// Rappels du client Premium, une fois par jour au plus (avant la lecture des
+// notifications, pour que l'aperçu les montre déjà). La date est mémorisée
+// avant l'envoi : un échec n'est pas retenté à chaque affichage.
+if ($maintenanceEnabled && $dashboardPremium && ($_SESSION['maintenance_reminders'] ?? '') !== $clientId . '|' . $today) {
+    $_SESSION['maintenance_reminders'] = $clientId . '|' . $today;
+    try {
+        maintenanceSendReminders($conn, $today, $clientId);
+    } catch (Throwable $e) {
+        error_log('[SmartAutoTrack] rappels au tableau de bord, client ' . $clientId . ' : ' . $e->getMessage());
+    }
+}
+// Toutes les échéances de tous les véhicules, les plus urgentes d'abord.
+$echeances = [];
+$echeancesCounts = ['overdue' => 0, 'soon' => 0];
+if ($maintenanceEnabled) {
+    foreach (maintenanceClientSchedule($conn, $clientId, $today) as $veh) {
+        foreach ($veh['echeances'] as $item) {
+            $item['idVehicule'] = $veh['idVehicule'];
+            $item['vehicule'] = trim($veh['marque'] . ' ' . $veh['modele']) . ($veh['immatriculation'] !== '' ? ' · ' . $veh['immatriculation'] : '');
+            $echeances[] = $item;
+            if (isset($echeancesCounts[$item['status']])) {
+                $echeancesCounts[$item['status']]++;
+            }
+        }
+    }
+    usort($echeances, fn(array $a, array $b): int =>
+        [MAINTENANCE_STATUS_ORDER[$a['status']], $a['daysLeft'] ?? PHP_INT_MAX, $a['kmLeft'] ?? PHP_INT_MAX]
+        <=> [MAINTENANCE_STATUS_ORDER[$b['status']], $b['daysLeft'] ?? PHP_INT_MAX, $b['kmLeft'] ?? PHP_INT_MAX]);
+}
+$echeancesApercu = array_slice($echeances, 0, DASHBOARD_DUE_LIMIT);
 
 // Notifications récentes (aperçu ; le centre de notifications complet — avec
 // marquage lu/non lu — reste dans la cloche, alimentée par le système existant)
@@ -351,6 +435,40 @@ include '../includes/header.php';
                     <?php endif; ?>
                 </div>
 
+                <?php if ($maintenanceEnabled && $echeancesApercu): ?>
+                <!-- Prochaines échéances (assurance, visite technique, entretiens) -->
+                <div class="v2-card v2-panel" id="echeances">
+                    <div class="v2-panel-head">
+                        <h2>Prochaines échéances</h2>
+                        <div class="v2-due-summary">
+                            <?php if ($echeancesCounts['overdue']): ?><span class="v2-badge bad"><?php echo (int)$echeancesCounts['overdue']; ?> en retard</span><?php endif; ?>
+                            <?php if ($echeancesCounts['soon']): ?><span class="v2-badge warn"><?php echo (int)$echeancesCounts['soon']; ?> bientôt</span><?php endif; ?>
+                        </div>
+                    </div>
+                    <div class="v2-due-list">
+                        <?php foreach ($echeancesApercu as $item):
+                            $dueClass = DASHBOARD_DUE_BADGES[$item['status']];
+                            $dueLabel = $item['status'] === 'unknown' ? 'À renseigner' : MAINTENANCE_STATUS_LABELS[$item['status']];
+                        ?>
+                            <a href="vehicle_details.php?id=<?php echo (int)$item['idVehicule']; ?>#echeances" class="v2-due-item <?php echo h($item['status']); ?>">
+                                <span class="v2-due-dot <?php echo h($dueClass); ?>" aria-hidden="true"></span>
+                                <span class="v2-due-body">
+                                    <span class="v2-due-title"><?php echo h($item['libelle']); ?> <span class="v2-due-vehicle">— <?php echo h($item['vehicule']); ?></span></span>
+                                    <span class="v2-due-meta"><?php echo h(dashboardDueText($item)); ?></span>
+                                </span>
+                                <span class="v2-badge <?php echo h($dueClass); ?> v2-due-badge"><?php echo h($dueLabel); ?></span>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php if (count($echeances) > count($echeancesApercu)): ?>
+                        <p class="v2-note">Les <?php echo count($echeances) - count($echeancesApercu); ?> autres échéances sont sur la fiche de chaque véhicule.</p>
+                    <?php endif; ?>
+                    <?php if (!$dashboardPremium && subscriptionsReady($conn)): ?>
+                        <p class="v2-due-premium">Recevez des rappels automatiques avant chaque échéance — <a href="abonnement.php">Premium</a></p>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
                 <!-- Interventions -->
                 <div class="v2-card v2-panel">
                     <div class="v2-panel-head">
@@ -481,7 +599,6 @@ include '../includes/header.php';
                 <div class="v2-card v2-panel-sm" style="border-color:#3956E8; border-width:1.5px;">
                     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
                         <h2 style="margin:0; font-family:'Sora', sans-serif; font-size:15px; font-weight:700;">Votre abonnement</h2>
-                        <?php $dashboardPremium = clientIsPremium($conn, (int)$_SESSION['user_id']); ?>
                         <span style="font-size:10.5px; font-weight:700; color:<?php echo $dashboardPremium ? '#1E8A4C' : '#6D74A0'; ?>; background:<?php echo $dashboardPremium ? '#E9F6EE' : '#EFF0F6'; ?>; padding:3px 9px; border-radius:20px;"><?php echo $dashboardPremium ? 'PREMIUM' : 'GRATUIT'; ?></span>
                     </div>
                     <?php if ($dashboardPremium): ?>

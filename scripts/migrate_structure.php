@@ -14,10 +14,15 @@
  * `onglet_vu` (dernière ouverture des onglets Journal et Interventions par
  * utilisateur) et index sur journalactivites.dateHeure. Et le mot de passe
  * oublié (Brevo) et la connexion Google : table `password_resets`, colonne
- * utilisateur.googleId et son index.
+ * utilisateur.googleId et son index. Enfin, les échéances et rappels
+ * d'entretien (includes/maintenance.php) : colonnes
+ * vehicule.dateExpirationAssurance et vehicule.dateProchaineVisiteTechnique,
+ * tables `entretien`, `entretien_regle` (avec ses 3 règles par défaut) et
+ * `rappel_envoye`.
  *
  * Idempotent : peut être relancé sans effet si tout est déjà en place.
- * Ne touche à aucune donnée.
+ * Ne touche à aucune donnée existante (seule écriture de données : les
+ * règles d'entretien par défaut, insérées si absentes).
  *
  *   php scripts/migrate_structure.php            simulation (aucune écriture)
  *   php scripts/migrate_structure.php --apply    applique
@@ -467,6 +472,86 @@ if (!indexExists($conn, 'utilisateur', 'idx_utilisateur_google_id')) {
     }
 }
 if ($n === $before) echo "  ok, réinitialisation de mot de passe et OAuth sont prêts\n";
+
+// ============================================================
+// 8) Échéances et rappels d'entretien
+// ============================================================
+// Assurance et visite technique : dates saisies sur le véhicule. Vidange,
+// freins et pneus : historique `entretien` (clôture d'une réparation ou
+// déclaration du client) et règles `entretien_regle` (modifiables par
+// l'admin). `rappel_envoye` garantit un seul rappel par véhicule, type,
+// échéance, palier et canal (scripts/send_reminders.php). Tant qu'un de ces
+// éléments manque, maintenanceReady() renvoie false et le site se comporte
+// comme avant.
+echo "\n8. Échéances et rappels d'entretien\n";
+$before = $n;
+$vehiculeDateColumns = [
+    ['dateExpirationAssurance', 'DATE NULL'],
+    ['dateProchaineVisiteTechnique', 'DATE NULL'],
+];
+foreach ($vehiculeDateColumns as [$c, $def]) {
+    if (!colExists($conn, 'vehicule', $c)) {
+        announce($apply, "ajouter vehicule.$c");
+        if ($apply) $conn->exec("ALTER TABLE vehicule ADD COLUMN `$c` $def");
+    }
+}
+if (!tableExists($conn, 'entretien')) {
+    announce($apply, 'créer la table entretien');
+    if ($apply) $conn->exec("CREATE TABLE entretien (
+        idEntretien INT AUTO_INCREMENT PRIMARY KEY,
+        idVehicule INT NOT NULL,
+        type ENUM('VIDANGE','FREINS','PNEUS') NOT NULL,
+        dateEntretien DATE NOT NULL,
+        kilometrage INT NULL,
+        idReparation INT NULL,
+        source ENUM('REPARATION','CLIENT') NOT NULL,
+        dateCreation DATETIME NOT NULL,
+        INDEX idx_entretien_vehicule_type_date (idVehicule, type, dateEntretien),
+        CONSTRAINT fk_entretien_vehicule FOREIGN KEY (idVehicule) REFERENCES vehicule(idVehicule) ON DELETE CASCADE,
+        CONSTRAINT fk_entretien_reparation FOREIGN KEY (idReparation) REFERENCES reparation(idReparation) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+}
+if (!tableExists($conn, 'entretien_regle')) {
+    announce($apply, 'créer la table entretien_regle');
+    if ($apply) $conn->exec("CREATE TABLE entretien_regle (
+        type ENUM('VIDANGE','FREINS','PNEUS') NOT NULL PRIMARY KEY,
+        intervalleMois INT NOT NULL,
+        intervalleKm INT NULL,
+        actif TINYINT(1) NOT NULL DEFAULT 1
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+}
+// Règles par défaut (conditions sévères du Cameroun), recopiées ici plutôt
+// que lues dans MAINTENANCE_DEFAULT_RULES : une migration reste figée même si
+// les valeurs par défaut du code changent plus tard. INSERT IGNORE ne
+// remplace jamais une règle déjà modifiée par l'admin.
+$defaultRules = [
+    ['VIDANGE', 6, 5000],
+    ['FREINS', 6, 10000],
+    ['PNEUS', 24, 40000],
+];
+$existingRules = tableExists($conn, 'entretien_regle')
+    ? $conn->query('SELECT type FROM entretien_regle')->fetchAll(PDO::FETCH_COLUMN)
+    : [];
+foreach ($defaultRules as [$type, $mois, $km]) {
+    if (!in_array($type, $existingRules, true)) {
+        announce($apply, "insérer la règle par défaut $type ($km km ou $mois mois)");
+        if ($apply) $conn->prepare("INSERT IGNORE INTO entretien_regle (type, intervalleMois, intervalleKm, actif) VALUES (?, ?, ?, 1)")->execute([$type, $mois, $km]);
+    }
+}
+if (!tableExists($conn, 'rappel_envoye')) {
+    announce($apply, 'créer la table rappel_envoye');
+    if ($apply) $conn->exec("CREATE TABLE rappel_envoye (
+        idVehicule INT NOT NULL,
+        type VARCHAR(20) NOT NULL,
+        echeance DATE NOT NULL,
+        palier ENUM('J30','J7','J0','RETARD') NOT NULL,
+        canal ENUM('NOTIF','EMAIL') NOT NULL,
+        dateEnvoi DATETIME NOT NULL,
+        PRIMARY KEY (idVehicule, type, echeance, palier, canal),
+        CONSTRAINT fk_rappel_envoye_vehicule FOREIGN KEY (idVehicule) REFERENCES vehicule(idVehicule) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+}
+if ($n === $before) echo "  ok, les échéances et rappels d'entretien sont prêts\n";
 
 echo "\n" . ($n === 0 ? "Rien à faire, tout est déjà en place." :
     ($apply ? "$n action(s) appliquée(s)." : "$n action(s) à appliquer. Relancez avec --apply.")) . "\n";

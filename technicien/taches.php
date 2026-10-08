@@ -13,7 +13,8 @@ require_once '../includes/repair_report.php';
  *   - POST form=start : démarrer une tâche PLANIFIEE (passage à EN_COURS).
  *   - « Marquer terminée » (tâche EN_COURS) : fenêtre sur la page même
  *     (repairReportFinishModal(), includes/repair_report.php) avec le
- *     formulaire complet du rapport de fin d'intervention, envoyé en POST au
+ *     formulaire complet du rapport de fin d'intervention (cases facultatives
+ *     « Entretien effectué » : vidange, freins, pneus), envoyé en POST au
  *     traitement de reparations.php (return=taches) ; retour ici avec
  *     ?success=repaired.
  *   - GET statut=toutes|a_demarrer|en_cours : filtre.

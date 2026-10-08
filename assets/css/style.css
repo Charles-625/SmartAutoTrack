@@ -1584,3 +1584,30 @@ html.report-modal-open body {
     outline: 2px solid #4B4FCE;
     outline-offset: 2px;
 }
+
+/* ---------- Marque : logo SAT + nom (includes/brand.php, brand_lockup()) ---------- */
+.brand-lockup { display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; line-height: 1; text-decoration: none; }
+.brand-lockup .brand-lockup__mark { display: block; flex-shrink: 0; width: 48px; height: 22px; border-radius: 0; object-fit: contain; }
+.brand-lockup__text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.brand-lockup__name { font-family: 'Sora', 'Manrope', sans-serif; font-weight: 800; font-size: 19px; letter-spacing: -0.015em; line-height: 1.05; }
+.brand-lockup__tagline { font-family: 'Manrope', 'Inter', sans-serif; font-weight: 600; font-size: 10.5px; letter-spacing: 0.04em; line-height: 1.1; }
+.brand-lockup--dark .brand-lockup__smart { color: #FFFFFF; }
+.brand-lockup--dark .brand-lockup__autotrack { color: #8FB3FF; }
+.brand-lockup--dark .brand-lockup__tagline { color: #9FA5CC; }
+.brand-lockup--light .brand-lockup__smart { color: #131B3E; }
+.brand-lockup--light .brand-lockup__autotrack { color: #3956E8; }
+.brand-lockup--light .brand-lockup__tagline { color: #666C8E; }
+.brand-lockup--sm { gap: 8px; }
+.brand-lockup--sm .brand-lockup__mark { width: 39px; height: 18px; }
+.brand-lockup--sm .brand-lockup__name { font-size: 14px; }
+.brand-lockup--sm .brand-lockup__tagline { display: none; }
+.brand-lockup--lg { gap: 11px; }
+.brand-lockup--lg .brand-lockup__mark { width: 57px; height: 26px; }
+.brand-lockup--lg .brand-lockup__name { font-size: 20px; }
+.brand-lockup--lg .brand-lockup__tagline { font-size: 11px; }
+/* Barres latérales étroites (téléphone) : on réduit un peu plutôt que de couper. */
+@media (max-width: 360px) {
+    .brand-lockup--md { gap: 8px; }
+    .brand-lockup--md .brand-lockup__mark { width: 42px; height: 19px; }
+    .brand-lockup--md .brand-lockup__name { font-size: 17px; }
+}

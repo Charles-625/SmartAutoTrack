@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once '../includes/subscription.php';
+require_once '../includes/maintenance.php';
 
 /**
  * Page "Abonnement" de l'espace client (particulier ou entreprise).
@@ -13,6 +14,10 @@ require_once '../includes/subscription.php';
  * Après la migration : formule actuelle (Gratuit ou Premium, fin de période),
  * véhicules utilisés / limite, messages IA restants aujourd'hui, comparatif
  * Gratuit / Premium selon le type de client, essai et souscription.
+ * Ligne « Rappels d'entretien et d'échéances » du comparatif : affichée
+ * seulement si maintenanceReady() (échéances visibles par tous, rappels
+ * automatiques par notification et email réservés à Premium ; voir
+ * includes/maintenance.php) ; sinon elle reste annoncée « Bientôt ».
  * POST form=start_trial (CSRF) : active l'essai Premium de SUB_TRIAL_DAYS
  *     jours (subscriptionStartTrial()), puis redirige vers ?success=trial.
  * Le paiement Mobile Money passe par des appels AJAX : ajax/subscription_collect.php
@@ -78,6 +83,8 @@ if ($subscriptionsEnabled) {
     // Fin de la couverture Premium : dateFin de l'abonnement actif le plus
     // tardif, y compris une période déjà payée qui commencera plus tard.
     $premiumUntil = $isPremium ? subscriptionExtensionStart($conn, $clientId, time()) : null;
+    // Échéances et rappels d'entretien disponibles (migration section 8).
+    $maintenanceEnabled = maintenanceReady($conn);
     $periodLabels = ['ESSAI' => 'Essai gratuit', 'OFFERT' => 'Mois offert', 'MENSUEL' => 'Mensuel', 'ANNUEL' => 'Annuel'];
 
     // Paiement en ligne : CamPay configuré et tables de paiement présentes.
@@ -243,6 +250,13 @@ include '../includes/header.php';
                                 <td>Inclus</td>
                                 <td>Inclus</td>
                             </tr>
+                            <?php if ($maintenanceEnabled): ?>
+                            <tr>
+                                <td><strong>Rappels d'entretien et d'échéances</strong><br><span class="v2-note" style="margin:0;">Assurance, visite technique, vidange, freins, pneus</span></td>
+                                <td>Échéances affichées sur le tableau de bord et la fiche du véhicule</td>
+                                <td>Échéances affichées et rappels automatiques : notification 30 jours, 7 jours et le jour même, email 7 jours avant et en cas de retard</td>
+                            </tr>
+                            <?php endif; ?>
                             <tr>
                                 <td><strong>Prix</strong></td>
                                 <td>Gratuit</td>
@@ -254,7 +268,7 @@ include '../includes/header.php';
                             </tr>
                         </tbody>
                     </table>
-                    <p class="v2-note">Bientôt : rappels d'entretien, carnet d'entretien, demandes prioritaires…</p>
+                    <p class="v2-note"><?php echo h($maintenanceEnabled ? 'Bientôt : demandes prioritaires…' : "Bientôt : rappels d'entretien, carnet d'entretien, demandes prioritaires…"); ?></p>
                 </div>
             </div>
 

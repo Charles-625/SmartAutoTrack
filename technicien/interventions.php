@@ -14,7 +14,8 @@ require_once '../includes/repair_report.php';
  *     à EN_COURS) et la journaliser.
  *   - « Marquer terminée » (intervention EN_COURS) : fenêtre sur la page
  *     même (repairReportFinishModal(), includes/repair_report.php) avec le
- *     formulaire complet du rapport de fin d'intervention, envoyé en POST au
+ *     formulaire complet du rapport de fin d'intervention (cases facultatives
+ *     « Entretien effectué » : vidange, freins, pneus), envoyé en POST au
  *     traitement de reparations.php (return=interventions) ; retour ici avec
  *     ?success=repaired.
  *   - GET statut=a_demarrer|en_cours|terminee|annulee, date, vehicule : filtres.

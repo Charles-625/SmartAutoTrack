@@ -272,7 +272,7 @@ include '../includes/header.php';
 <div class="auth-container">
     <div class="auth-card">
         <div class="auth-header">
-            <img src="<?php echo SITE_URL; ?>assets/img/logo.png" alt="<?php echo SITE_NAME; ?>" style="width:64px; height:64px; border-radius:16px; margin-bottom:1rem;">
+            <img src="<?php echo SITE_URL; ?>assets/img/brand/sat-mark.svg" alt="<?php echo SITE_NAME; ?>" style="width:64px; height:64px; border-radius:16px; margin-bottom:1rem;">
             <h1>SmartAutoTrack</h1>
             <p>Rejoignez notre plateforme de suivi véhicules</p>
         </div>

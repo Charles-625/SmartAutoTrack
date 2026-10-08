@@ -3,6 +3,7 @@ require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../config/roles.php';
 require_once '../includes/subscription.php';
+require_once '../includes/maintenance.php';
 
 /**
  * Véhicules du client : liste, ajout, modification et suppression.
@@ -22,11 +23,36 @@ require_once '../includes/subscription.php';
  * (config/config.php) ; l'immatriculation doit être unique.
  * Table écrite : vehicule ; lues : vehicule, anomalie, intervention (badge),
  * abonnement (limite de véhicules, via includes/subscription.php ; aucune
- * limite tant que la migration des abonnements n'est pas appliquée).
+ * limite tant que la migration des abonnements n'est pas appliquée),
+ * entretien et entretien_regle (affichage seulement : badge « N en retard »
+ * en rouge ou « N bientôt » en orange par véhicule, d'après
+ * maintenanceClientSchedule() ; aucun badge tant que maintenanceReady() est
+ * faux).
  * Fichiers liés : ajax/get_vehicle.php (pré-remplissage du formulaire
  * d'édition), assets/js/main.js (filtres de saisie).
  */
 requireRole('client');
+
+/**
+ * Badge d'échéances d'un véhicule de la liste : rouge s'il a au moins une
+ * échéance en retard, sinon orange s'il en a une « bientôt », sinon aucun.
+ * Le détail (libellés) va dans l'infobulle. Texte brut : à échapper avec h().
+ *
+ * @param array|null $due ['overdue' => string[], 'soon' => string[]] : libellés des échéances par statut.
+ * @return array{class: string, text: string, title: string}|null Classe .v2-badge, texte et infobulle, ou null.
+ */
+function vehiclesDueBadge(?array $due): ?array {
+    if (!$due) {
+        return null;
+    }
+    foreach (['overdue' => ['bad', 'en retard'], 'soon' => ['warn', 'bientôt']] as $status => [$class, $label]) {
+        $n = count($due[$status]);
+        if ($n > 0) {
+            return ['class' => $class, 'text' => $n . ' échéance' . ($n > 1 ? 's' : '') . ' ' . $label, 'title' => implode(', ', $due[$status])];
+        }
+    }
+    return null;
+}
 
 $db = new Database();
 $conn = $db->getConnection();
@@ -273,6 +299,25 @@ if ($vehicules) {
     }
 }
 
+// Échéances en retard ou proches des véhicules affichés (badge). « Aujourd'hui »
+// est calculé en PHP (fuseau différent de MySQL) ; rien sans la migration.
+$echeancesParVehicule = [];
+if ($vehicules && maintenanceReady($conn)) {
+    $displayedIds = array_flip(array_map('intval', array_column($vehicules, 'id')));
+    foreach (maintenanceClientSchedule($conn, (int)$_SESSION['user_id'], date('Y-m-d')) as $veh) {
+        if (!isset($displayedIds[$veh['idVehicule']])) {
+            continue;
+        }
+        $due = ['overdue' => [], 'soon' => []];
+        foreach ($veh['echeances'] as $item) {
+            if (isset($due[$item['status']])) {
+                $due[$item['status']][] = $item['libelle'];
+            }
+        }
+        $echeancesParVehicule[$veh['idVehicule']] = $due;
+    }
+}
+
 // Interventions actives, pour le badge sidebar (même calcul que dashboard.php)
 $stmt = $conn->prepare("SELECT COUNT(*) FROM intervention WHERE idClient = ? AND statut IN ('PLANIFIEE', 'EN_COURS')");
 $stmt->execute([$_SESSION['user_id']]);
@@ -383,6 +428,9 @@ include '../includes/header.php';
                                                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="2" y="10" width="20" height="8" rx="3" stroke="#2540C4" stroke-width="1.6"/><circle cx="7.5" cy="18.5" r="1.5" stroke="#2540C4" stroke-width="1.6"/><circle cx="16.5" cy="18.5" r="1.5" stroke="#2540C4" stroke-width="1.6"/><path d="M5 10L7 5.5H17L19 10" stroke="#2540C4" stroke-width="1.6" stroke-linejoin="round"/></svg>
                                             </div>
                                             <?php echo h($v['marque'] . ' ' . $v['modele']); ?>
+                                            <?php if ($dueBadge = vehiclesDueBadge($echeancesParVehicule[(int)$v['id']] ?? null)): ?>
+                                                <a href="vehicle_details.php?id=<?php echo (int)$v['id']; ?>#echeances" class="v2-badge <?php echo h($dueBadge['class']); ?>" title="<?php echo h($dueBadge['title']); ?>"><?php echo h($dueBadge['text']); ?></a>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                     <td><?php echo h($v['immatriculation']); ?></td>
@@ -448,6 +496,9 @@ include '../includes/header.php';
                         <div class="v2-vehicle-name"><?php echo h($v['marque'] . ' ' . $v['modele']); ?></div>
                         <div class="v2-vehicle-meta"><?php echo h($v['immatriculation']); ?> · <?php echo h($v['annee'] ?: 'N/A'); ?> · <?php echo number_format((float)$v['kilometrage'], 0, ',', ' '); ?> km<?php echo h($v['couleur'] ? ' · ' . $v['couleur'] : ''); ?></div>
                     </div>
+                    <?php if ($dueBadge = vehiclesDueBadge($echeancesParVehicule[(int)$v['id']] ?? null)): ?>
+                        <div class="v2-due-flags"><a href="vehicle_details.php?id=<?php echo (int)$v['id']; ?>#echeances" class="v2-badge <?php echo h($dueBadge['class']); ?>" title="<?php echo h($dueBadge['title']); ?>"><?php echo h($dueBadge['text']); ?></a></div>
+                    <?php endif; ?>
                     <?php if ($hasAnomaly && $anomalie): ?>
                         <div class="v2-vehicle-anomaly">
                             Anomalie constatée — <?php echo h($anomalie['description']); ?> — détectée le <?php echo h(date('d/m', strtotime($anomalie['dateDetection']))); ?>.

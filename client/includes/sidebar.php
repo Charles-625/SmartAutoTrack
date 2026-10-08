@@ -51,7 +51,7 @@ $sidebarUnread = activity_log_sidebar_counts($conn ?? null, ROLE_CLIENT, (int)($
 <aside class="v2-sidebar <?php echo $isEntreprise ? 'v2-sidebar-entreprise' : ''; ?>">
     <div class="v2-sidebar-logo">
         <div class="v2-sidebar-logo-badge">
-            <img src="<?php echo SITE_URL; ?>assets/img/logo-mark.png" alt="SmartAutoTrack" width="84" height="84">
+            <?php echo brand_lockup('dark'); ?>
         </div>
     </div>
 

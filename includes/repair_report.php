@@ -22,11 +22,23 @@
  * repairReportReady() renvoie false : la réparation est enregistrée sans
  * elles, le véhicule et le journal reçoivent quand même les deux valeurs.
  *
- * Tables : reparation, intervention, vehicule, anomalie, notifications
- *          (écriture), journalactivites (via log_activity()).
+ * Entretien effectué : trois cases facultatives (« Vidange faite », « Freins
+ * contrôlés », « Pneus changés », champ entretien[] limité aux clés de
+ * MAINTENANCE_SERVICE_TYPES). À la clôture, chaque case cochée enregistre un
+ * entretien (maintenanceRecord(), includes/maintenance.php : date du jour,
+ * kilométrage relevé, source REPARATION) dans la même transaction, et le
+ * rapport du journal gagne une ligne « Entretien : … ». Les échéances de
+ * vidange, freins et pneus du client repartent de cette date. Tant que la
+ * section 8 de scripts/migrate_structure.php n'est pas appliquée
+ * (maintenanceReady() à false), rien n'est enregistré en table `entretien`
+ * (la ligne du journal reste écrite).
+ *
+ * Tables : reparation, intervention, vehicule, anomalie, notifications,
+ *          entretien (écriture), journalactivites (via log_activity()).
  */
 
 require_once __DIR__ . '/activity_log.php';
+require_once __DIR__ . '/maintenance.php';
 
 /** États du véhicule à la sortie (liste blanche) : valeur stockée => libellé affiché. */
 const REPAIR_VEHICLE_STATES = [
@@ -37,6 +49,13 @@ const REPAIR_VEHICLE_STATES = [
 
 /** Kilométrage maximal accepté (reste dans un INT MySQL). */
 const REPAIR_MAX_KILOMETRAGE = 9999999;
+
+/** Cases « Entretien effectué » du formulaire : clé de MAINTENANCE_SERVICE_TYPES => libellé de la case. */
+const REPAIR_MAINTENANCE_CHECKS = [
+    'VIDANGE' => 'Vidange faite',
+    'FREINS' => 'Freins contrôlés',
+    'PNEUS' => 'Pneus changés',
+];
 
 // Nom de l'activité écrite dans le journal à la clôture : REPAIR_REPORT_ACTIVITY,
 // défini dans includes/activity_log.php (reconnu par activity_log_is_report()).
@@ -67,11 +86,18 @@ function repairReportReady(PDO $conn): bool {
  * @return array{data: array, errors: string[]} data : interventionId, titre,
  *         description, diagnostic, travaux, pieces, duree, cout,
  *         recommandations, kilometrage (int|null), etatVehicule (clé de
- *         REPAIR_VEHICLE_STATES ou '').
+ *         REPAIR_VEHICLE_STATES ou ''), entretien (clés de
+ *         REPAIR_MAINTENANCE_CHECKS cochées, sans doublon, dans l'ordre de
+ *         la constante ; valeurs inconnues ignorées).
  */
 function repairReportParse(array $post): array {
     $km = trim((string)($post['kilometrage'] ?? ''));
     $etat = (string)($post['etat_vehicule'] ?? '');
+    $checked = is_array($post['entretien'] ?? null) ? $post['entretien'] : [];
+    $entretien = [];
+    foreach (array_keys(REPAIR_MAINTENANCE_CHECKS) as $type) {
+        if (in_array($type, $checked, true)) $entretien[] = $type;
+    }
     $data = [
         'interventionId' => filter_var($post['intervention_id'] ?? null, FILTER_VALIDATE_INT),
         'titre' => sanitize($post['titre'] ?? ''),
@@ -84,6 +110,7 @@ function repairReportParse(array $post): array {
         'recommandations' => sanitize($post['recommandations'] ?? ''),
         'kilometrage' => ctype_digit($km) ? (int)$km : null,
         'etatVehicule' => isset(REPAIR_VEHICLE_STATES[$etat]) ? $etat : '',
+        'entretien' => $entretien,
     ];
 
     $errors = [];
@@ -116,7 +143,9 @@ function repairReportNumber($value): string {
 
 /**
  * Texte du rapport de fin d'intervention, une information par ligne
- * (« Libellé : valeur »). Les lignes sans valeur sont omises. Les valeurs
+ * (« Libellé : valeur »). Les lignes sans valeur sont omises (dont
+ * « Entretien », sans case cochée : libellés de MAINTENANCE_SERVICE_TYPES
+ * séparés par des virgules). Les valeurs
  * sont celles de repairReportParse() (déjà passées par sanitize()) : à
  * l'affichage, h() n'encode pas une seconde fois.
  *
@@ -128,6 +157,11 @@ function repairReportCompose(array $data): string {
     $dureeTxt = $duree > 0 ? rtrim(rtrim(number_format($duree, 2, ',', ' '), '0'), ',') . ' h' : '';
     $km = $data['kilometrage'] ?? null;
     $etat = $data['etatVehicule'] ?? '';
+    // Libellés des échéances (MAINTENANCE_SERVICE_TYPES) : « Vidange, Contrôle des freins ».
+    $entretien = [];
+    foreach ((array)($data['entretien'] ?? []) as $type) {
+        if (isset(MAINTENANCE_SERVICE_TYPES[$type])) $entretien[] = MAINTENANCE_SERVICE_TYPES[$type];
+    }
 
     $lines = [
         'Titre' => $data['titre'] ?? '',
@@ -138,6 +172,7 @@ function repairReportCompose(array $data): string {
         'Coût' => repairReportNumber($data['cout'] ?? 0) . ' XAF',
         'Kilométrage relevé' => $km !== null ? repairReportNumber($km) . ' km' : '',
         'État du véhicule' => REPAIR_VEHICLE_STATES[$etat] ?? '',
+        'Entretien' => implode(', ', $entretien),
         'Recommandations' => $data['recommandations'] ?? '',
     ];
 
@@ -157,9 +192,11 @@ function repairReportCompose(array $data): string {
  *      repairReportReady()) ;
  *   4. clôture l'intervention (TERMINEE) ;
  *   5. met à jour vehicule.kilometrage et vehicule.etat ;
- *   6. passe les anomalies NOUVELLE/EN_COURS de l'intervention à TRAITEE ;
- *   7. écrit le rapport complet dans le journal (REPAIR_REPORT_ACTIVITY) ;
- *   8. notifie le client (avec, si le coût est non nul, l'invitation à
+ *   6. enregistre l'entretien coché (vidange, freins, pneus) avec la date du
+ *      jour et le kilométrage relevé, si maintenanceReady() ;
+ *   7. passe les anomalies NOUVELLE/EN_COURS de l'intervention à TRAITEE ;
+ *   8. écrit le rapport complet dans le journal (REPAIR_REPORT_ACTIVITY) ;
+ *   9. notifie le client (avec, si le coût est non nul, l'invitation à
  *      régler par Mobile Money depuis l'onglet Réparations).
  * En cas d'exception, la transaction est annulée et l'exception relancée.
  *
@@ -223,6 +260,17 @@ function repairReportClose(PDO $conn, array $scope, array $data, int $actorId, ?
         $conn->prepare("UPDATE vehicule SET kilometrage = ?, etat = ? WHERE idVehicule = ?")
             ->execute([(int)$data['kilometrage'], $data['etatVehicule'], (int)$iv['idVehicule']]);
 
+        // Entretien effectué : point de départ des prochaines échéances du
+        // client (date PHP du jour, voir includes/maintenance.php). Le
+        // véhicule est celui de l'intervention verrouillée ci-dessus.
+        $entretien = (array)($data['entretien'] ?? []);
+        if ($entretien && maintenanceReady($conn)) {
+            $today = date('Y-m-d');
+            foreach ($entretien as $type) {
+                maintenanceRecord($conn, (int)$iv['idVehicule'], (string)$type, $today, (int)$data['kilometrage'], 'REPARATION', $reparationId);
+            }
+        }
+
         // La réparation règle les anomalies constatées sur cette intervention
         $conn->prepare("UPDATE anomalie SET statut = 'TRAITEE', dateResolution = NOW() WHERE idIntervention = ? AND statut IN ('NOUVELLE', 'EN_COURS')")->execute([$interventionId]);
 
@@ -268,7 +316,9 @@ function repairReportKmError(int $saisi, int $kmActuel): string {
 
 /**
  * Affiche les champs du formulaire de fin de réparation (tout sauf
- * l'intervention, le jeton CSRF et les boutons, propres à chaque page).
+ * l'intervention, le jeton CSRF et les boutons, propres à chaque page), dont
+ * le groupe facultatif « Entretien effectué » (cases entretien[] de
+ * REPAIR_MAINTENANCE_CHECKS, recochées d'après $old['entretien']).
  *
  * @param string   $p        Préfixe des classes CSS : 'tv2' (technicien) ou 'gv2' (garage).
  * @param array    $old      Valeurs à réafficher après une erreur (clés = noms des champs POST).
@@ -280,8 +330,10 @@ function repairReportKmError(int $saisi, int $kmActuel): string {
 function repairReportFormFields(string $p, array $old = [], ?int $kmActuel = null): void {
     $p = $p === 'gv2' ? 'gv2' : 'tv2';
     $v = function (string $name) use ($old): string {
-        return (string)($old[$name] ?? '');
+        $value = $old[$name] ?? '';
+        return is_scalar($value) ? (string)$value : '';
     };
+    $oldEntretien = is_array($old['entretien'] ?? null) ? $old['entretien'] : [];
     ?>
             <div class="<?php echo h($p); ?>-form-group"><label for="repTitre">Titre</label><input type="text" name="titre" id="repTitre" required value="<?php echo h($v('titre')); ?>" placeholder="Ex. Remplacement des plaquettes de frein"></div>
             <div class="<?php echo h($p); ?>-form-group"><label for="repDescription">Description générale</label><textarea name="description" id="repDescription" required placeholder="Ex. Bruit métallique au freinage à l'avant…"><?php echo h($v('description')); ?></textarea></div>
@@ -308,6 +360,18 @@ function repairReportFormFields(string $p, array $old = [], ?int $kmActuel = nul
                     </select>
                 </div>
             </div>
+            <fieldset class="<?php echo h($p); ?>-form-group" style="border:0; padding:0; margin-left:0; margin-right:0; min-width:0;">
+                <legend style="font-size:14px; font-weight:700; margin-bottom:5px; padding:0;">Entretien effectué <span style="font-weight:400; opacity:.75;">(facultatif)</span></legend>
+                <div style="display:flex; flex-wrap:wrap; gap:8px 20px;">
+                    <?php foreach (REPAIR_MAINTENANCE_CHECKS as $key => $label): ?>
+                        <label style="display:inline-flex; align-items:center; gap:8px; margin:0; font-weight:600; cursor:pointer;">
+                            <input type="checkbox" name="entretien[]" value="<?php echo h($key); ?>" style="width:16px; height:16px; margin:0; accent-color:#3956E8;" <?php echo in_array($key, $oldEntretien, true) ? 'checked' : ''; ?>>
+                            <?php echo h($label); ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <div style="font-size:12px; margin-top:4px; opacity:.75;">Les prochaines échéances du client repartent de la date du jour et du kilométrage relevé.</div>
+            </fieldset>
             <div class="<?php echo h($p); ?>-form-group"><label for="repRecommandations">Recommandations</label><textarea name="recommandations" id="repRecommandations" placeholder="Ex. Contrôler les disques dans 5 000 km"><?php echo h($v('recommandations')); ?></textarea></div>
     <?php
 }
