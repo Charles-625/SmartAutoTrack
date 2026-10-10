@@ -9,9 +9,9 @@ require_once 'includes/helpers.php';
  *
  * Accès : rôle admin uniquement.
  * Actions POST (jeton CSRF requis), passées par ?action=… :
- *   - assign_garage : affecte/réaffecte une demande à un garage validé ;
- *   - assign_internal : affecte une demande à un technicien SmartAutoTrack
- *     (INTERNE validé), avec un garage partenaire en appui facultatif ;
+ *   - assign : affecte ou réaffecte une intervention PLANIFIEE ou ANNULEE
+ *     (refusée) via admin_assign() — technicien (SmartAutoTrack ou de
+ *     garage) et garage facultatifs, au moins l'un des deux ;
  *   - new : crée une intervention assignée directement à un technicien ;
  *   - update_status (?id=N) : change le statut de l'intervention.
  * Filtres GET : `status`, `technicien`, `garage` (id ou « none » pour les
@@ -23,11 +23,15 @@ require_once 'includes/helpers.php';
  * avec une anomalie CRITIQUE ouverte passent en tête de liste.
  * Colonne Garage : « SmartAutoTrack » quand il n'y a aucun garage, ou garage
  * partenaire « en appui » quand un technicien interne mène l'intervention.
+ * Bouton de ligne : « Affecter » (demande sans affectation active) ou
+ * « Réaffecter » (PLANIFIEE déjà confiée à un technicien ou un garage), pour
+ * assurer la disponibilité ; rien pour EN_COURS/TERMINEE. La fenêtre
+ * affiche la charge (interventions planifiées et en cours) de chacun.
  *
  * Tables : intervention (lecture/écriture), vehicule, utilisateur,
  * technicien, garage, anomalie, notifications, journal d'activité.
  * Liens : intervention_detail.php, admin/includes/helpers.php
- * (admin_reassign_garage, admin_assign_internal), client/interventions.php.
+ * (admin_assign, admin_assign_choices, admin_assign_fields), client/interventions.php.
  * Ouverture de la page : activity_log_mark_seen(..., 'interventions') remet à zéro
  * la pastille rouge de nouveautés de cet onglet dans la sidebar (table
  * onglet_vu, includes/activity_log.php).
@@ -46,59 +50,30 @@ $action = $_GET['action'] ?? '';
 $intervention_id = $_GET['id'] ?? null;
 $errors = [];
 
-// Affecter/réaffecter une demande à un garage : jonction Client → Garage
-// (désormais choisie par le client à la création, cf. client/interventions.php)
-// et supervision admin — affectation rapide depuis cette liste. La
-// réaffectation complète (avec historique et confirmation) vit sur
-// intervention_detail.php ; la logique métier elle-même (règles + journal +
-// notifications) est partagée via admin_reassign_garage() (admin/includes/helpers.php)
-// pour ne jamais diverger entre les deux pages.
-if ($action === 'assign_garage' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+// Affecter / réaffecter une intervention : l'administrateur choisit librement
+// un technicien (SmartAutoTrack ou de garage), un garage, ou les deux — au
+// moins l'un des deux. Règles, verrou, journal et notifications :
+// admin_assign() (admin/includes/helpers.php), partagée avec
+// intervention_detail.php.
+if ($action === 'assign' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         $errors[] = 'Session expirée, merci de réessayer.';
     } else {
         $assignInterventionId = filter_var($_POST['intervention_id'] ?? null, FILTER_VALIDATE_INT);
-        $assignGarageId = filter_var($_POST['garage_id'] ?? null, FILTER_VALIDATE_INT);
+        // Deux choix facultatifs : valeur vide = aucun.
+        $assignTechnicienId = admin_assign_parse_id($_POST['technicien_id'] ?? null);
+        $assignGarageId = admin_assign_parse_id($_POST['garage_id'] ?? null);
 
         if (!$assignInterventionId) $errors[] = 'Intervention invalide.';
-        if (!$assignGarageId) $errors[] = 'Merci de choisir un garage.';
+        if ($assignTechnicienId === false) $errors[] = 'Technicien invalide.';
+        if ($assignGarageId === false) $errors[] = 'Garage invalide.';
 
         if (empty($errors)) {
-            $reassignError = admin_reassign_garage($conn, $assignInterventionId, $assignGarageId);
-            if ($reassignError !== null) {
-                $errors[] = $reassignError;
-            } else {
-                header('Location: interventions.php?success=garage_assigned');
-                exit;
-            }
-        }
-    }
-}
-
-// Affecter une demande à un technicien SmartAutoTrack (INTERNE), avec un
-// garage partenaire en appui facultatif. Règles, verrou, journal et
-// notifications : admin_assign_internal() (admin/includes/helpers.php),
-// partagée avec intervention_detail.php.
-if ($action === 'assign_internal' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
-        $errors[] = 'Session expirée, merci de réessayer.';
-    } else {
-        $assignInterventionId = filter_var($_POST['intervention_id'] ?? null, FILTER_VALIDATE_INT);
-        $assignTechnicienId = filter_var($_POST['technicien_id'] ?? null, FILTER_VALIDATE_INT);
-        // Garage en appui facultatif : valeur vide = aucun garage.
-        $supportGarageRaw = (string)($_POST['support_garage_id'] ?? '');
-        $supportGarageId = $supportGarageRaw === '' ? null : filter_var($supportGarageRaw, FILTER_VALIDATE_INT);
-
-        if (!$assignInterventionId) $errors[] = 'Intervention invalide.';
-        if (!$assignTechnicienId) $errors[] = 'Merci de choisir un technicien SmartAutoTrack.';
-        if ($supportGarageId === false) $errors[] = 'Garage invalide.';
-
-        if (empty($errors)) {
-            $assignError = admin_assign_internal($conn, $assignInterventionId, $assignTechnicienId, $supportGarageId);
+            $assignError = admin_assign($conn, $assignInterventionId, $assignTechnicienId, $assignGarageId, (int)$_SESSION['user_id']);
             if ($assignError !== null) {
                 $errors[] = $assignError;
             } else {
-                header('Location: interventions.php?success=internal_assigned');
+                header('Location: interventions.php?success=assigned');
                 exit;
             }
         }
@@ -209,6 +184,7 @@ $whereSql = implode(' AND ', $where);
 // anomalie CRITIQUE ouverte d'abord, puis la plus récente en premier comme avant.
 $stmt = $conn->prepare("
     SELECT i.idIntervention AS id, i.type, i.description, i.dateIntervention, i.statut, i.priorite,
+           i.idTechnicien, i.idGarage,
            v.marque, v.modele, v.immatriculation,
            uc.prenom AS client_prenom, uc.nom AS client_nom,
            ut.prenom AS technicien_prenom, ut.nom AS technicien_nom, t.typeTechnicien,
@@ -239,13 +215,9 @@ $techniciens = $conn->query("
     JOIN technicien t ON t.idTechnicien = u.idUtilisateur WHERE t.statutValidation = 'VALIDE' ORDER BY u.nom
 ")->fetchAll();
 
-// Techniciens SmartAutoTrack proposés à l'affectation : INTERNE et validés
-// (revérifié côté serveur par admin_assign_internal()).
-$techniciensInternes = $conn->query("
-    SELECT u.idUtilisateur AS id, u.nom, u.prenom, t.specialite FROM utilisateur u
-    JOIN technicien t ON t.idTechnicien = u.idUtilisateur
-    WHERE t.typeTechnicien = 'INTERNE' AND t.statutValidation = 'VALIDE' ORDER BY u.nom
-")->fetchAll();
+// Choix de la fenêtre d'affectation, avec la charge de chacun (revérifiés
+// côté serveur par admin_assign()).
+$assignChoices = admin_assign_choices($conn);
 
 $garagesList = $conn->query("SELECT idGarage, nomGarage FROM garage WHERE statutGarage = 'VALIDE' ORDER BY nomGarage")->fetchAll();
 
@@ -285,7 +257,7 @@ include '../includes/header.php';
         <?php if (isset($_GET['success'])): ?>
             <div class="av2-alert success">
                 <?php
-                $successMsgs = ['created' => 'Intervention créée avec succès.', 'status_updated' => 'Statut mis à jour.', 'garage_assigned' => 'Demande affectée au garage avec succès.', 'internal_assigned' => 'Demande affectée au technicien SmartAutoTrack avec succès.'];
+                $successMsgs = ['created' => 'Intervention créée avec succès.', 'status_updated' => 'Statut mis à jour.', 'assigned' => 'Affectation enregistrée : les personnes concernées ont été notifiées.', 'garage_assigned' => 'Demande affectée au garage avec succès.', 'internal_assigned' => 'Demande affectée au technicien SmartAutoTrack avec succès.'];
                 echo h($successMsgs[$_GET['success']] ?? 'Action effectuée.');
                 ?>
             </div>
@@ -371,6 +343,11 @@ include '../includes/header.php';
                                 // Demande à affecter : même définition que le compteur non_affectees.
                                 $needsGarage = !$iv['technicien_nom'] && (!$iv['nomGarage'] || $iv['statut'] === 'ANNULEE');
                                 $isInternal = $iv['typeTechnicien'] === 'INTERNE';
+                                // (Ré)affectable tant que l'intervention n'a pas démarré ;
+                                // « Réaffecter » si elle est déjà confiée (PLANIFIEE avec
+                                // technicien ou garage), sinon « Affecter ».
+                                $canAssign = in_array($iv['statut'], ['PLANIFIEE', 'ANNULEE'], true);
+                                $isAssigned = $iv['statut'] === 'PLANIFIEE' && ($iv['idTechnicien'] !== null || $iv['idGarage'] !== null);
                             ?>
                                 <tr>
                                     <td>
@@ -408,13 +385,18 @@ include '../includes/header.php';
                                     <td>
                                         <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
                                             <a href="intervention_detail.php?id=<?php echo (int)$iv['id']; ?>" class="av2-table-link">Détails</a>
-                                            <?php if ($needsGarage): ?>
-                                                <?php // Une seule action par ligne : la fenêtre « Affecter la demande » (plus bas) propose les deux choix. ?>
-                                                <button type="button" class="av2-btn-primary av2-btn-xs js-open-assign"
+                                            <?php if ($canAssign): ?>
+                                                <?php // La fenêtre « Affecter la demande » (plus bas) s'ouvre avec l'affectation actuelle présélectionnée,
+                                                      // sauf pour une demande refusée (ANNULEE) : rien n'est présélectionné. ?>
+                                                <button type="button" class="<?php echo $isAssigned ? 'av2-btn-outline' : 'av2-btn-primary'; ?> av2-btn-xs js-open-assign"
                                                         data-id="<?php echo (int)$iv['id']; ?>"
+                                                        data-mode="<?php echo $isAssigned ? 'reassign' : 'assign'; ?>"
+                                                        data-technicien="<?php echo h($isAssigned ? ($iv['idTechnicien'] ?? '') : ''); ?>"
+                                                        data-garage="<?php echo h($isAssigned ? ($iv['idGarage'] ?? '') : ''); ?>"
                                                         data-summary="<?php echo h(($iv['type'] ?: 'Intervention') . ' — ' . $iv['marque'] . ' ' . $iv['modele'] . ' (' . $iv['immatriculation'] . ') — ' . $iv['client_prenom'] . ' ' . $iv['client_nom']); ?>"
-                                                        data-urgent="<?php echo $iv['anomalie_niveau'] === 'CRITIQUE' ? '1' : '0'; ?>">Affecter</button>
-                                            <?php elseif (!empty($nextStatus[$iv['statut']])): ?>
+                                                        data-urgent="<?php echo $iv['anomalie_niveau'] === 'CRITIQUE' ? '1' : '0'; ?>"><?php echo $isAssigned ? 'Réaffecter' : 'Affecter'; ?></button>
+                                            <?php endif; ?>
+                                            <?php if (!$needsGarage && !empty($nextStatus[$iv['statut']])): ?>
                                                 <form method="POST" action="interventions.php?action=update_status&id=<?php echo (int)$iv['id']; ?>" style="display:flex; gap:6px;">
                                                     <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                                                     <select name="status" style="font-size:12.5px; padding:5px 8px; border-radius:8px; border:1px solid #DDE0F0;">
@@ -474,71 +456,26 @@ include '../includes/header.php';
     </div>
 </div>
 
-<!-- Fenêtre « Affecter la demande » : un seul formulaire pour les deux façons
-     d'affecter une demande. Le choix du destinataire change l'action envoyée
-     (assign_internal ou assign_garage, traitées en haut de page) et seuls les
-     champs du choix courant sont actifs, donc envoyés et obligatoires. -->
+<!-- Fenêtre « Affecter la demande » / « Réaffecter l'intervention » : deux
+     listes facultatives (technicien, garage — au moins l'un des deux), avec
+     la charge de chacun ; une seule action « assign », traitée en haut de
+     page par admin_assign(). L'affectation actuelle est présélectionnée à
+     l'ouverture (data-technicien / data-garage du bouton de la ligne), sauf
+     pour une demande refusée (ANNULEE), ouverte sans présélection. -->
 <div class="av2-modal-overlay" id="assignOverlay">
     <div class="av2-modal" role="dialog" aria-modal="true" aria-labelledby="assignTitle">
         <h3 id="assignTitle">Affecter la demande</h3>
         <p class="av2-modal-sub" id="assignSummary"></p>
         <p class="av2-alert error" id="assignUrgent" hidden style="margin-bottom:14px;">Urgent : anomalie critique, véhicule immobilisé ou dangereux.</p>
-        <form method="POST" id="assignForm" action="interventions.php?action=<?php echo empty($techniciensInternes) ? 'assign_garage' : 'assign_internal'; ?>">
+        <form method="POST" id="assignForm" action="interventions.php?action=assign" class="js-assign-form">
             <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
             <input type="hidden" name="intervention_id" id="assignInterventionId" value="">
 
-            <div class="av2-form-section">À qui confier cette demande ?</div>
-            <div class="av2-choice-group">
-                <label class="av2-choice">
-                    <input type="radio" name="assign_mode" value="internal" <?php echo empty($techniciensInternes) ? 'disabled' : 'checked'; ?>>
-                    <span><strong>Un technicien SmartAutoTrack</strong><small>Avec un garage pour la réparation si besoin.</small></span>
-                </label>
-                <label class="av2-choice">
-                    <input type="radio" name="assign_mode" value="garage" <?php echo empty($techniciensInternes) ? 'checked' : ''; ?>>
-                    <span><strong>Un garage partenaire</strong><small>Le garage affecte lui-même son technicien.</small></span>
-                </label>
-            </div>
-
-            <div data-assign-panel="internal">
-                <?php if (empty($techniciensInternes)): ?>
-                    <p class="av2-modal-sub">Aucun technicien SmartAutoTrack validé disponible.</p>
-                <?php else: ?>
-                    <div class="av2-form-group">
-                        <label for="assignTechnicien">Technicien<span class="av2-required" aria-hidden="true">*</span></label>
-                        <select name="technicien_id" id="assignTechnicien" required>
-                            <option value="">Choisir un technicien</option>
-                            <?php foreach ($techniciensInternes as $t): ?>
-                                <option value="<?php echo (int)$t['id']; ?>"><?php echo h($t['prenom'] . ' ' . $t['nom'] . ($t['specialite'] ? ' — ' . $t['specialite'] : '')); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="av2-form-group">
-                        <label for="assignSupportGarage">Garage (facultatif)</label>
-                        <select name="support_garage_id" id="assignSupportGarage">
-                            <option value="">Aucun garage</option>
-                            <?php foreach ($garagesList as $g): ?>
-                                <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                <?php endif; ?>
-            </div>
-
-            <div data-assign-panel="garage">
-                <div class="av2-form-group">
-                    <label for="assignGarage">Garage<span class="av2-required" aria-hidden="true">*</span></label>
-                    <select name="garage_id" id="assignGarage" required>
-                        <option value="">Choisir un garage</option>
-                        <?php foreach ($garagesList as $g): ?>
-                            <option value="<?php echo (int)$g['idGarage']; ?>"><?php echo h($g['nomGarage']); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-            </div>
+            <?php admin_assign_fields($assignChoices, 'assign'); ?>
 
             <div class="av2-modal-actions">
                 <button type="button" class="av2-btn-outline" id="closeAssign">Annuler</button>
-                <button type="submit" class="av2-btn-primary">Affecter</button>
+                <button type="submit" class="av2-btn-primary" id="assignSubmit">Affecter</button>
             </div>
         </form>
     </div>
@@ -546,38 +483,47 @@ include '../includes/header.php';
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // Fenêtre « Affecter la demande »
+    // Fenêtre « Affecter la demande » / « Réaffecter l'intervention »
     var assignOverlay = document.getElementById('assignOverlay');
     var assignForm = document.getElementById('assignForm');
-    var actions = { internal: 'interventions.php?action=assign_internal', garage: 'interventions.php?action=assign_garage' };
-    function applyAssignMode() {
-        var checked = assignForm.querySelector('input[name="assign_mode"]:checked');
-        var mode = checked ? checked.value : 'garage';
-        assignForm.action = actions[mode];
-        // Champs du choix masqué : désactivés, donc ni obligatoires ni envoyés.
-        assignForm.querySelectorAll('[data-assign-panel]').forEach(function (panel) {
-            var active = panel.getAttribute('data-assign-panel') === mode;
-            panel.hidden = !active;
-            panel.querySelectorAll('select').forEach(function (field) { field.disabled = !active; });
-        });
-    }
-    assignForm.querySelectorAll('input[name="assign_mode"]').forEach(function (radio) {
-        radio.addEventListener('change', applyAssignMode);
+    var techSelect = assignForm.querySelector('[data-assign-tech]');
+    var garageSelect = assignForm.querySelector('[data-assign-garage]');
+    var assignError = assignForm.querySelector('[data-assign-error]');
+    // Un technicien de garage est affecté avec son garage : on le présélectionne.
+    techSelect.addEventListener('change', function () {
+        var option = techSelect.options[techSelect.selectedIndex];
+        if (option && option.getAttribute('data-garage')) garageSelect.value = option.getAttribute('data-garage');
+        assignError.hidden = true;
+    });
+    garageSelect.addEventListener('change', function () { assignError.hidden = true; });
+    // Validation légère : au moins un choix (la vraie validation reste serveur).
+    assignForm.addEventListener('submit', function (e) {
+        if (!techSelect.value && !garageSelect.value) {
+            e.preventDefault();
+            assignError.hidden = false;
+        }
     });
     document.querySelectorAll('.js-open-assign').forEach(function (button) {
         button.addEventListener('click', function () {
+            var reassign = button.getAttribute('data-mode') === 'reassign';
             assignForm.reset();
+            assignError.hidden = true;
             document.getElementById('assignInterventionId').value = button.getAttribute('data-id');
+            document.getElementById('assignTitle').textContent = reassign ? 'Réaffecter l\'intervention' : 'Affecter la demande';
+            document.getElementById('assignSubmit').textContent = reassign ? 'Réaffecter' : 'Affecter';
             document.getElementById('assignSummary').textContent = button.getAttribute('data-summary');
             document.getElementById('assignUrgent').hidden = button.getAttribute('data-urgent') !== '1';
-            applyAssignMode();
+            // Affectation actuelle présélectionnée (vide si absente des listes).
+            techSelect.value = button.getAttribute('data-technicien') || '';
+            garageSelect.value = button.getAttribute('data-garage') || '';
+            if (techSelect.selectedIndex < 0) techSelect.value = '';
+            if (garageSelect.selectedIndex < 0) garageSelect.value = '';
             assignOverlay.classList.add('show');
         });
     });
     document.getElementById('closeAssign').addEventListener('click', function () { assignOverlay.classList.remove('show'); });
     assignOverlay.addEventListener('click', function (e) { if (e.target === assignOverlay) assignOverlay.classList.remove('show'); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') assignOverlay.classList.remove('show'); });
-    applyAssignMode();
 
     var overlay = document.getElementById('newInterventionOverlay');
     document.getElementById('openNewIntervention').addEventListener('click', function () { overlay.classList.add('show'); });

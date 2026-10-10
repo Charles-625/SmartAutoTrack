@@ -198,6 +198,11 @@ body.nav-open { overflow: hidden; }
 .av2-form-group textarea { resize: vertical; min-height: 80px; }
 .av2-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .av2-required { color: #E03131; margin-left: 2px; }
+/* Phrase d'aide au-dessus d'un groupe de champs (ex. formulaire d'affectation :
+   « Choisissez un technicien, un garage, ou les deux. ») */
+.av2-form-help { margin: 0 0 14px; font-size: 13px; line-height: 1.45; color: var(--a-text-light); }
+.av2-form-group optgroup { font-weight: 700; color: var(--a-text); }
+.av2-form-group optgroup option { font-weight: 500; }
 /* Choix exclusif présenté en cartes (ex. fenêtre « Affecter la demande ») */
 .av2-choice-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
 .av2-choice { display: flex; gap: 10px; align-items: flex-start; border: 1px solid #DDE0F0; border-radius: 12px; padding: 12px; cursor: pointer; font-size: 13.5px; color: var(--a-text); }

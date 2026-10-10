@@ -17,6 +17,9 @@ require_once '../includes/anomaly_types.php';
  *     technicien et le client.
  *   - POST form=refuse : refuser une demande encore non affectée (statut
  *     ANNULEE) ; le client est notifié.
+ *   Les deux écritures sont conditionnelles (toujours PLANIFIEE, toujours sans
+ *   technicien) : une (ré)affectation faite entre-temps par l'administrateur
+ *   (admin_assign()) n'est jamais écrasée.
  *   - GET statut=nouvelle|planifiee|en_cours|terminee|refusee|toutes : filtre.
  * Les interventions où le garage est seulement en appui d'un technicien
  * SmartAutoTrack (affectées par l'admin) n'y figurent pas : elles sont
@@ -90,9 +93,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'assign'
                 $formErrors[] = 'Cette demande ne peut plus être affectée (déjà traitée ou hors de votre garage).';
             } else {
                 // Le formulaire ne saisit qu'un jour : l'heure prévue est fixée à 8 h.
-                $stmt = $conn->prepare("UPDATE intervention SET idTechnicien = ?, dateIntervention = ?, priorite = ? WHERE idIntervention = ? AND idGarage = ?");
+                // UPDATE conditionnel (toujours sans technicien, toujours PLANIFIEE) :
+                // si l'administrateur l'a (ré)affectée entre-temps (admin_assign()),
+                // rien n'est écrasé.
+                $stmt = $conn->prepare("UPDATE intervention SET idTechnicien = ?, dateIntervention = ?, priorite = ? WHERE idIntervention = ? AND idGarage = ? AND idTechnicien IS NULL AND statut = 'PLANIFIEE'");
                 $stmt->execute([$technicienId, $dateObj->format('Y-m-d') . ' 08:00:00', $priorite, $interventionId, $garageId]);
-
+                if ($stmt->rowCount() !== 1) {
+                    $formErrors[] = 'Cette demande ne peut plus être affectée (déjà traitée ou hors de votre garage).';
+                }
+            }
+            if ($iv && empty($formErrors)) {
                 garage_log($conn, $interventionId, 'Demande acceptée et planifiée', 'Le garage a affecté cette intervention à un technicien.', null);
                 garage_log($conn, $interventionId, 'Intervention assignée à un technicien', null, $technicienId);
 
@@ -120,8 +130,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'refuse'
         $stmt = $conn->prepare("SELECT idClient, type FROM intervention WHERE idIntervention = ? AND idGarage = ? AND idTechnicien IS NULL");
         $stmt->execute([$interventionId, $garageId]);
         $iv = $stmt->fetch();
-        if ($iv) {
-            $conn->prepare("UPDATE intervention SET statut = 'ANNULEE' WHERE idIntervention = ? AND idGarage = ?")->execute([$interventionId, $garageId]);
+        // UPDATE conditionnel : une demande que l'administrateur vient de
+        // confier à un technicien (admin_assign()) n'est jamais annulée.
+        $refuse = $conn->prepare("UPDATE intervention SET statut = 'ANNULEE' WHERE idIntervention = ? AND idGarage = ? AND idTechnicien IS NULL AND statut = 'PLANIFIEE'");
+        if ($iv && $refuse->execute([$interventionId, $garageId]) && $refuse->rowCount() === 1) {
             garage_log($conn, $interventionId, 'Demande refusée', 'Le garage a refusé cette demande d\'intervention.', null);
             $conn->prepare("INSERT INTO notifications (user_id, type, titre, message) VALUES (?, 'intervention', 'Demande refusée', ?)")
                 ->execute([$iv['idClient'], $garageNom . ' n\'a pas pu prendre en charge votre demande (' . $iv['type'] . '). Un administrateur va la réaffecter.']);

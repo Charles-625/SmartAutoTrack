@@ -46,8 +46,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'start')
         $stmt = $conn->prepare("SELECT idTechnicien FROM intervention WHERE idIntervention = ? AND idGarage = ? AND statut = 'PLANIFIEE' AND idTechnicien IS NOT NULL");
         $stmt->execute([$interventionId, $garageId]);
         $iv = $stmt->fetch();
-        if ($iv) {
-            $conn->prepare("UPDATE intervention SET statut = 'EN_COURS' WHERE idIntervention = ? AND idGarage = ?")->execute([$interventionId, $garageId]);
+        // UPDATE conditionnel sur l'état lu : une intervention réaffectée
+        // entre-temps par l'administrateur (admin_assign()) ne démarre pas.
+        $start = $conn->prepare("UPDATE intervention SET statut = 'EN_COURS' WHERE idIntervention = ? AND idGarage = ? AND statut = 'PLANIFIEE' AND idTechnicien = ?");
+        if ($iv && $start->execute([$interventionId, $garageId, (int)$iv['idTechnicien']]) && $start->rowCount() === 1) {
             garage_log($conn, $interventionId, 'Intervention démarrée', null, (int)$iv['idTechnicien']);
             header('Location: interventions.php?success=started');
             exit;

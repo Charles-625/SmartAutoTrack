@@ -41,8 +41,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'start')
         $interventionId = filter_var($_POST['intervention_id'] ?? null, FILTER_VALIDATE_INT);
         $stmt = $conn->prepare("SELECT idIntervention FROM intervention WHERE idIntervention = ? AND idTechnicien = ? AND statut = 'PLANIFIEE'");
         $stmt->execute([$interventionId, $selfId]);
-        if ($stmt->fetch()) {
-            $conn->prepare("UPDATE intervention SET statut = 'EN_COURS' WHERE idIntervention = ? AND idTechnicien = ?")->execute([$interventionId, $selfId]);
+        // UPDATE conditionnel : une tâche que l'administrateur vient de
+        // réaffecter (admin_assign()) n'est ni démarrée ni journalisée.
+        $start = $conn->prepare("UPDATE intervention SET statut = 'EN_COURS' WHERE idIntervention = ? AND idTechnicien = ? AND statut = 'PLANIFIEE'");
+        if ($stmt->fetch() && $start->execute([$interventionId, $selfId]) && $start->rowCount() === 1) {
             technicien_log($conn, 'Intervention démarrée', ['idIntervention' => (int)$interventionId, 'categorie' => 'intervention']);
             header('Location: taches.php?success=started');
             exit;
