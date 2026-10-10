@@ -41,7 +41,18 @@ if (($_POST['action'] ?? '') === 'reset') {
 }
 
 $message = trim((string)($_POST['message'] ?? ''));
-if ($message === '') {
+// Photo facultative (champ « image ») : un dysfonctionnement montré plutôt que décrit.
+$hasImage = isset($_FILES['image']) && (int)($_FILES['image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+$imageUrl = null;
+if ($hasImage) {
+    try {
+        $imageUrl = aiImageDataUrl($_FILES['image']);
+    } catch (AiException $e) {
+        http_response_code(400);
+        exit(json_encode(['success' => false, 'message' => $e->getMessage()]));
+    }
+}
+if ($message === '' && $imageUrl === null) {
     http_response_code(400);
     exit(json_encode(['success' => false, 'message' => 'Écrivez une question.']));
 }
@@ -73,10 +84,13 @@ try {
     $messages = array_merge(
         [['role' => 'system', 'content' => aiSystemPrompt($role, $context)]],
         aiHistory($role),
-        [['role' => 'user', 'content' => $message]]
+        [['role' => 'user', 'content' => $imageUrl !== null ? aiImageContent($message, $imageUrl) : $message]]
     );
-    $answer = aiChat($messages);
-    aiRemember($role, $message, $answer);
+    // Avec photo : modèles capables de lire une image. L'historique ne garde
+    // que le texte (la photo n'est conservée ni en session ni sur le disque).
+    $answer = $imageUrl !== null ? aiChat($messages, 1500, null, aiVisionModelList()) : aiChat($messages);
+    $answer = aiCompleteRefusal($answer);
+    aiRemember($role, $imageUrl !== null ? '[Photo] ' . ($message !== '' ? $message : 'Photo envoyée') : $message, $answer);
     $remaining = $role === ROLE_CLIENT ? subscriptionAiRemaining($conn, (int)$_SESSION['user_id']) : null;
     echo json_encode(['success' => true, 'answer' => $answer, 'remaining' => $remaining]);
 } catch (AiException $e) {

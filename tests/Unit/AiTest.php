@@ -136,6 +136,27 @@ final class AiTest extends TestCase
 		$this->assertStringContainsString('supervision', aiSystemPrompt(ROLE_ADMIN, 'x'));
 	}
 
+	public function testPromptsRestrictToAutomotiveWithFixedRefusal(): void
+	{
+		foreach ([ROLE_CLIENT, ROLE_ADMIN] as $role) {
+			$prompt = aiSystemPrompt($role, 'x');
+			$this->assertStringContainsString('PÉRIMÈTRE STRICT', $prompt);
+			$this->assertStringContainsString(AI_OFF_TOPIC_MESSAGE, $prompt);
+		}
+		$photo = aiImageContent('', 'data:image/jpeg;base64,AAAA');
+		$this->assertStringContainsString(AI_OFF_TOPIC_MESSAGE, $photo[0]['text']);
+		$this->assertSame('data:image/jpeg;base64,AAAA', $photo[1]['image_url']['url']);
+	}
+
+	public function testTruncatedRefusalIsCompleted(): void
+	{
+		$this->assertSame(AI_OFF_TOPIC_MESSAGE, aiCompleteRefusal('Je suis'));
+		$this->assertSame(AI_OFF_TOPIC_MESSAGE, aiCompleteRefusal('« Je suis l\'assistant SmartAutoTrack : je réponds…'));
+		$this->assertSame(AI_OFF_TOPIC_MESSAGE, aiCompleteRefusal(AI_OFF_TOPIC_MESSAGE));
+		$this->assertSame('Faites vérifier vos freins.', aiCompleteRefusal('Faites vérifier vos freins.'));
+		$this->assertSame('Je', aiCompleteRefusal('Je'));
+	}
+
 	/** Véhicule au format de maintenanceClientSchedule(), échéances calculées pour le 07/10/2026. */
 	private static function scheduledVehicle(string $plate, array $last): array
 	{

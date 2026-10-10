@@ -65,7 +65,10 @@ include '../includes/header.php';
                     <?php endforeach; ?>
                 </div>
 
+                <div class="ai-chat-preview" id="aiChatPreview" hidden></div>
                 <form class="av2-ai-input" id="aiChatForm" autocomplete="off">
+                    <button type="button" class="ai-chat-attach" id="aiChatAttach" aria-label="Joindre une photo" title="Joindre une photo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg></button>
+                    <input type="file" id="aiChatFile" accept="image/jpeg,image/png,image/webp" hidden>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2L14 9L21 11L14 13L12 20L10 13L3 11L10 9Z" stroke="rgba(255,255,255,0.6)" stroke-width="1.5" stroke-linejoin="round"/></svg>
                     <input type="text" id="aiChatInput" placeholder="Ex. Quels garages ont le plus d'anomalies critiques ce mois-ci ?" maxlength="<?php echo AI_MAX_MESSAGE_LENGTH; ?>" aria-label="Votre question">
                     <button type="submit" aria-label="Envoyer" title="Envoyer">

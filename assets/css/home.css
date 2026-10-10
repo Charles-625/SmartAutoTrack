@@ -1,10 +1,9 @@
 /*
  * Page d'accueil publique SmartAutoTrack — identité visuelle cohérente avec
  * les espaces applicatifs (bleu nuit #0B1330 + bleu vif #3956E8, la même
- * teinte que admin_v2.css / client_v2.css), et avec les couleurs déjà
- * établies par rôle pour la section "espaces utilisateurs" :
- *   client particulier #3956E8 · client entreprise #2540C4 · garage #0D9488
- *   technicien #D97706 · administrateur #131B3E.
+ * teinte que admin_v2.css / client_v2.css). Seules les couleurs de la charte
+ * sont utilisées ; les icônes viennent de includes/home_icons.php (SVG au
+ * trait, couleur héritée).
  */
 :root {
     --home-accent: #3956E8;
@@ -106,12 +105,65 @@ body.homev2 { margin: 0; background: var(--home-bg); color: var(--home-text); fo
 .homev2-feature-card p { font-size: 13px; line-height: 1.55; color: var(--home-text-light); margin: 0; }
 
 /* ---------- Espaces utilisateurs ---------- */
-.homev2-role-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
-.homev2-role-card { border-radius: 18px; padding: 26px 20px; color: #FFFFFF; position: relative; overflow: hidden; min-height: 210px; display: flex; flex-direction: column; }
-.homev2-role-card::after { content: ''; position: absolute; width: 160px; height: 160px; border-radius: 50%; background: rgba(255,255,255,0.09); top: -70px; right: -60px; }
-.homev2-role-icon { width: 40px; height: 40px; border-radius: 11px; background: rgba(255,255,255,0.16); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; position: relative; z-index: 1; }
-.homev2-role-card h3 { font-size: 15px; font-weight: 800; margin: 0 0 8px; position: relative; z-index: 1; }
-.homev2-role-card p { font-size: 12.5px; line-height: 1.55; color: rgba(255,255,255,0.85); margin: 0; position: relative; z-index: 1; }
+.home-icon { display: block; flex-shrink: 0; }
+
+/* Cartes vedettes des deux profils clients */
+.homev2-client-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.homev2-client-card {
+    position: relative; overflow: hidden; isolation: isolate;
+    border-radius: 24px; padding: 36px 34px 32px; color: #FFFFFF;
+    display: flex; flex-direction: column;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.homev2-client-card:hover { transform: translateY(-4px); }
+.homev2-client-card--particulier { background: linear-gradient(145deg, #4A67F0 0%, #3956E8 45%, #2540C4 100%); box-shadow: 0 24px 50px rgba(57,86,232,0.32); }
+.homev2-client-card--particulier:hover { box-shadow: 0 30px 60px rgba(57,86,232,0.42); }
+.homev2-client-card--entreprise { background: linear-gradient(145deg, #1D2A5E 0%, #131B3E 60%, #0B1330 100%); box-shadow: 0 24px 50px rgba(11,19,48,0.30); }
+.homev2-client-card--entreprise:hover { box-shadow: 0 30px 60px rgba(11,19,48,0.40); }
+/* Halo et fine grille décoratifs, sans image */
+.homev2-client-card::before {
+    content: ''; position: absolute; z-index: -1; width: 340px; height: 340px; border-radius: 50%;
+    top: -150px; right: -120px;
+    background: radial-gradient(circle, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 70%);
+}
+.homev2-client-card--entreprise::before { background: radial-gradient(circle, rgba(57,86,232,0.55) 0%, rgba(57,86,232,0) 70%); }
+.homev2-client-card::after {
+    content: ''; position: absolute; z-index: -1; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+    -webkit-mask-image: linear-gradient(200deg, #000 0%, transparent 55%); mask-image: linear-gradient(200deg, #000 0%, transparent 55%);
+}
+.homev2-client-badge { align-self: flex-start; font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; padding: 6px 12px; border-radius: 20px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.22); margin-bottom: 22px; }
+.homev2-client-icon { width: 60px; height: 60px; border-radius: 17px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.28); box-shadow: inset 0 1px 0 rgba(255,255,255,0.25); margin-bottom: 18px; }
+.homev2-client-card--entreprise .homev2-client-icon { background: rgba(57,86,232,0.35); border-color: rgba(143,179,255,0.35); }
+.homev2-client-card h3 { font-size: 24px; font-weight: 800; margin: 0 0 10px; letter-spacing: -0.01em; }
+.homev2-client-card > p { font-size: 15px; line-height: 1.6; color: rgba(255,255,255,0.86); margin: 0 0 22px; max-width: 440px; }
+.homev2-client-list { list-style: none; margin: 0 0 28px; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.homev2-client-list li { display: flex; align-items: flex-start; gap: 11px; font-size: 14.5px; line-height: 1.45; font-weight: 600; }
+.homev2-client-list .home-icon { width: 22px; height: 22px; padding: 4px; border-radius: 50%; background: rgba(255,255,255,0.18); stroke-width: 2.6; margin-top: -1px; }
+.homev2-client-card--entreprise .homev2-client-list .home-icon { background: rgba(57,86,232,0.55); }
+.homev2-client-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-top: 22px; border-top: 1px solid rgba(255,255,255,0.16); }
+.homev2-client-price { display: flex; flex-direction: column; gap: 2px; }
+.homev2-client-price strong { font-family: 'Sora', sans-serif; font-size: 19px; font-weight: 800; }
+.homev2-client-price span { font-size: 12.5px; color: rgba(255,255,255,0.75); font-weight: 600; }
+
+/* Bouton d'inscription : même gabarit que « Se connecter », plus affirmé */
+.homev2-btn-client { padding: 14px 24px; font-size: 15px; border-radius: 12px; background: #FFFFFF; color: var(--home-accent-dark); box-shadow: 0 10px 24px rgba(11,19,48,0.25); }
+.homev2-btn-client:hover { background: #F4F5FA; transform: translateY(-1px); box-shadow: 0 14px 28px rgba(11,19,48,0.32); }
+.homev2-btn-client .home-icon { transition: transform 0.15s ease; }
+.homev2-btn-client:hover .home-icon { transform: translateX(3px); }
+.homev2-btn-client--accent { background: var(--home-accent); color: #FFFFFF; box-shadow: 0 10px 24px rgba(57,86,232,0.45); }
+.homev2-btn-client--accent:hover { background: #4A67F0; box-shadow: 0 14px 28px rgba(57,86,232,0.55); }
+
+/* Espaces professionnels, plus discrets */
+.homev2-pro-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 36px; }
+.homev2-pro-card { display: flex; align-items: flex-start; gap: 14px; background: #FFFFFF; border: 1px solid var(--home-border); border-radius: 16px; padding: 20px; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.homev2-pro-card:hover { border-color: #C9D2FA; box-shadow: 0 12px 28px rgba(11,19,48,0.07); }
+.homev2-pro-icon { width: 46px; height: 46px; border-radius: 13px; background: #EEF1FF; color: var(--home-accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.homev2-pro-card h3 { font-size: 15px; font-weight: 800; margin: 2px 0 5px; color: var(--home-text); }
+.homev2-pro-card p { font-size: 13px; line-height: 1.5; color: var(--home-text-light); margin: 0; }
+.homev2-pro-note { text-align: center; font-size: 13.5px; color: var(--home-text-light); margin: 22px 0 0; }
+.homev2-pro-note a { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; color: var(--home-accent); font-weight: 700; }
 
 /* ---------- Colonnes (garages / IA / abonnements) ---------- */
 .homev2-split { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
@@ -125,9 +177,15 @@ body.homev2 { margin: 0; background: var(--home-bg); color: var(--home-text); fo
 
 /* ---------- Abonnements teaser ---------- */
 .homev2-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 720px; margin: 0 auto; }
-.homev2-plan-card { background: #FFFFFF; border: 1px solid var(--home-border); border-radius: 18px; padding: 28px; text-align: center; }
-.homev2-plan-card h3 { font-size: 16px; font-weight: 800; margin: 0 0 10px; }
-.homev2-plan-card p { font-size: 13.5px; color: var(--home-text-light); line-height: 1.6; margin: 0; }
+.homev2-plans { max-width: 860px; }
+.homev2-plan-card { background: #FFFFFF; border: 1px solid var(--home-border); border-radius: 18px; padding: 28px; display: flex; flex-direction: column; }
+.homev2-plan-icon { width: 46px; height: 46px; border-radius: 13px; background: #EEF1FF; color: var(--home-accent); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+.homev2-plan-card h3 { font-size: 13px; font-weight: 800; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--home-text-light); }
+.homev2-plan-price { font-family: 'Sora', sans-serif; font-size: 24px; font-weight: 800; color: var(--home-navy); margin-bottom: 8px; }
+.homev2-plan-card p { font-size: 13.5px; color: var(--home-text-light); line-height: 1.6; margin: 0 0 18px; }
+.homev2-plan-premium { margin-top: auto; background: #EEF1FF; border-radius: 12px; padding: 14px 16px; font-size: 13px; line-height: 1.55; color: var(--home-text); }
+.homev2-plan-premium strong { color: var(--home-accent-dark); }
+.homev2-plans-note { text-align: center; font-size: 13px; color: var(--home-text-light); margin: 20px 0 0; }
 
 /* ---------- CTA final ---------- */
 .homev2-cta { background: linear-gradient(160deg, var(--home-navy) 0%, var(--home-navy-light) 100%); color: #FFFFFF; border-radius: 24px; padding: 56px 40px; text-align: center; }
@@ -142,12 +200,83 @@ body.homev2 { margin: 0; background: var(--home-bg); color: var(--home-text); fo
 .homev2-footer-brand img { width: 26px; height: 26px; border-radius: 7px; }
 .homev2-footer-copy { font-size: 12.5px; color: var(--home-text-light); }
 
+/* ---------- Habillage couleur des sections ----------
+   Les éléments essentiels (boutons, profils clients, prix) restent dans les
+   bleus de la charte ; les teintes sémantiques (vert #1E8A4C, ambre #C8871A,
+   rouge #E5484D) ne servent qu'à varier les icônes des fonctionnalités. */
+.homev2-section { position: relative; overflow: hidden; }
+.homev2-section > .homev2-container { position: relative; z-index: 1; }
+
+/* Titres de section : sur-titre en pastille, mot clé en dégradé */
+.homev2-eyebrow { padding: 6px 14px; border-radius: 20px; background: #E3E8FF; color: var(--home-accent-dark); }
+.homev2-section-head h2, .homev2-split-title { background: linear-gradient(90deg, var(--home-navy) 0%, var(--home-accent-dark) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.homev2-split-title { font-size: 28px; font-weight: 800; margin: 0 0 14px; line-height: 1.25; }
+.homev2-split-text { font-size: 15px; line-height: 1.65; color: var(--home-text-light); margin: 0; }
+
+/* Solution : fond bleuté et cartes colorées */
+.homev2-section-soft { background: linear-gradient(180deg, #FFFFFF 0%, #EEF1FF 100%); }
+.homev2-section-soft::before { content: ''; position: absolute; width: 520px; height: 520px; border-radius: 50%; top: -260px; left: -200px; background: radial-gradient(circle, rgba(57,86,232,0.14) 0%, rgba(57,86,232,0) 70%); }
+.homev2-feature-card { position: relative; overflow: hidden; box-shadow: 0 6px 18px rgba(11,19,48,0.05); transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease; }
+.homev2-feature-card::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: linear-gradient(90deg, var(--home-accent) 0%, #8FB3FF 100%); opacity: 0; transition: opacity 0.18s ease; }
+.homev2-feature-card:hover { transform: translateY(-3px); border-color: #C9D2FA; box-shadow: 0 16px 34px rgba(57,86,232,0.14); }
+.homev2-feature-card:hover::before { opacity: 1; }
+.homev2-feature-icon { width: 46px; height: 46px; border-radius: 13px; }
+.homev2-tone-blue     { background: #E3E8FF; color: #3956E8; }
+.homev2-tone-indigo   { background: #DCE2FB; color: #2540C4; }
+.homev2-tone-green    { background: #E2F4EA; color: #1E8A4C; }
+.homev2-tone-amber    { background: #FDF1DC; color: #C8871A; }
+.homev2-tone-red      { background: #FDE6E7; color: #E5484D; }
+.homev2-tone-gradient { background: linear-gradient(135deg, #3956E8 0%, #2540C4 100%); color: #FFFFFF; box-shadow: 0 8px 18px rgba(57,86,232,0.35); }
+
+/* Espaces : fond bleu pâle avec halos */
+.homev2-section-espaces { background: linear-gradient(160deg, #E8ECFF 0%, #F4F5FA 55%, #E3E8FF 100%); }
+.homev2-section-espaces::before { content: ''; position: absolute; width: 640px; height: 640px; border-radius: 50%; top: -280px; right: -220px; background: radial-gradient(circle, rgba(57,86,232,0.22) 0%, rgba(57,86,232,0) 70%); }
+.homev2-section-espaces::after { content: ''; position: absolute; width: 520px; height: 520px; border-radius: 50%; bottom: -260px; left: -200px; background: radial-gradient(circle, rgba(37,64,196,0.16) 0%, rgba(37,64,196,0) 70%); }
+.homev2-pro-card { box-shadow: 0 8px 22px rgba(11,19,48,0.06); }
+
+/* Garages : fond blanc teinté, panneau bleu nuit */
+.homev2-section-tint { background: linear-gradient(180deg, #F7F8FF 0%, #FFFFFF 100%); }
+.homev2-section-tint .homev2-split-panel { background: linear-gradient(150deg, #1D2A5E 0%, #131B3E 100%); border: none; color: #FFFFFF; box-shadow: 0 24px 50px rgba(11,19,48,0.28); position: relative; overflow: hidden; }
+.homev2-section-tint .homev2-split-panel::before { content: ''; position: absolute; width: 300px; height: 300px; border-radius: 50%; top: -140px; right: -110px; background: radial-gradient(circle, rgba(57,86,232,0.55) 0%, rgba(57,86,232,0) 70%); }
+.homev2-section-tint .homev2-split-panel > * { position: relative; }
+.homev2-section-tint .homev2-split-panel h3 { color: #FFFFFF; font-size: 20px; }
+.homev2-section-tint .homev2-split-panel p { color: rgba(255,255,255,0.8); }
+.homev2-section-tint .homev2-note { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); color: rgba(255,255,255,0.85); }
+.homev2-split-list li .homev2-check { background: #E3E8FF; color: var(--home-accent); }
+
+/* Assistant IA : section sombre, comme le haut de page */
+.homev2-section-dark { background: linear-gradient(165deg, var(--home-navy) 0%, #182552 100%); color: #FFFFFF; }
+.homev2-section-dark::before { content: ''; position: absolute; width: 620px; height: 620px; border-radius: 50%; top: -240px; left: -200px; background: radial-gradient(circle, rgba(57,86,232,0.38) 0%, rgba(57,86,232,0) 70%); }
+.homev2-section-dark .homev2-eyebrow { background: rgba(143,179,255,0.16); color: #B9CCFF; }
+.homev2-section-dark .homev2-split-title { background: linear-gradient(90deg, #FFFFFF 0%, #B9CCFF 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.homev2-section-dark .homev2-split-text { color: rgba(255,255,255,0.78); }
+.homev2-section-dark .homev2-split-panel { border: none; color: var(--home-text); box-shadow: 0 30px 60px rgba(0,0,0,0.35); }
+
+/* Abonnements : fond bleuté, prix et encadré Premium en relief */
+.homev2-section-plans { background: linear-gradient(180deg, #FFFFFF 0%, #EEF1FF 100%); }
+.homev2-section-plans + .homev2-section-plans { background: #EEF1FF; }
+.homev2-plan-card { position: relative; overflow: hidden; box-shadow: 0 12px 30px rgba(11,19,48,0.07); transition: transform 0.18s ease, box-shadow 0.18s ease; }
+.homev2-plan-card::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: linear-gradient(90deg, #3956E8 0%, #2540C4 100%); }
+.homev2-plan-card:hover { transform: translateY(-3px); box-shadow: 0 20px 40px rgba(57,86,232,0.16); }
+.homev2-plan-icon { background: linear-gradient(135deg, #3956E8 0%, #2540C4 100%); color: #FFFFFF; box-shadow: 0 8px 18px rgba(57,86,232,0.3); }
+.homev2-plan-price { color: var(--home-accent); }
+.homev2-plan-premium { background: linear-gradient(135deg, #3956E8 0%, #2540C4 100%); color: rgba(255,255,255,0.88); }
+.homev2-plan-premium strong { color: #FFFFFF; }
+
+/* Appel final et pied de page */
+.homev2-cta { position: relative; overflow: hidden; background: linear-gradient(135deg, #2540C4 0%, #131B3E 70%, #0B1330 100%); box-shadow: 0 30px 60px rgba(11,19,48,0.3); }
+.homev2-cta::before { content: ''; position: absolute; width: 420px; height: 420px; border-radius: 50%; top: -200px; right: -120px; background: radial-gradient(circle, rgba(143,179,255,0.35) 0%, rgba(143,179,255,0) 70%); }
+.homev2-cta > * { position: relative; }
+.homev2-footer { background: var(--home-navy); border-top: none; }
+.homev2-footer-copy { color: rgba(255,255,255,0.65); }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 960px) {
     .homev2-hero-inner { grid-template-columns: 1fr; }
     .homev2-mockup { max-width: 420px; margin: 0 auto; }
     .homev2-feature-grid { grid-template-columns: repeat(2, 1fr); }
-    .homev2-role-grid { grid-template-columns: repeat(2, 1fr); }
+    .homev2-client-grid { grid-template-columns: 1fr; }
+    .homev2-pro-grid { grid-template-columns: 1fr; }
     .homev2-split { grid-template-columns: 1fr; gap: 32px; }
 }
 @media (max-width: 720px) {
@@ -162,7 +291,9 @@ body.homev2 { margin: 0; background: var(--home-bg); color: var(--home-text); fo
 }
 @media (max-width: 560px) {
     .homev2-feature-grid { grid-template-columns: 1fr; }
-    .homev2-role-grid { grid-template-columns: 1fr; }
+    .homev2-client-card { padding: 28px 22px 24px; }
+    .homev2-client-card h3 { font-size: 21px; }
+    .homev2-client-foot .homev2-btn { width: 100%; }
     .homev2-plans { grid-template-columns: 1fr; }
     .homev2-mockup-stats { grid-template-columns: 1fr; }
     .homev2-cta { padding: 40px 22px; }
